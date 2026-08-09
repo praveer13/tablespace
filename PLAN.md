@@ -250,7 +250,27 @@ them together." Spec it only after tablespace ships.
 
 ## RESUME POINT
 
-Pre-build. Plan approved 2026-08-09; nothing scaffolded yet. Next action:
-phase 1 — fork byzantine into /root/tablespace and rebrand. When the
-build starts, replace this section with live state per the byzantine
-pattern.
+**Phase 1 DONE (2026-08-09, commit 09945d0):** forked byzantine →
+/root/tablespace, rebranded end-to-end (site strings, CNAME
+tablespace.play.naigap.com, llms.txt, logo, badge-t6.svg added, progress
+namespace `tablespace:v1`, query-plan rank ladder SEQ SCAN→SUPERUSER),
+registries swapped to the tablespace curriculum: 7 tracks / 25 lesson stubs
+(real titles+hooks+outlines, blocks marked in-development), 6 lab entries in
+src/data/labs.ts (check ids are the contract the Rust harnesses must emit),
+4 Crash Week drill cards written in full, Engine.tsx stub page at /engine.
+Fixed two dead links inherited from byzantine (`/forge/<id>` → `/labs/<id>`
+on the labs page; `/lab/<sim>` → `/<sim>` in exercise cards + linked-sim
+chips — **byzantine live still has these 404s; backport candidate**).
+Verified: tsc -b clean, eslint clean, bun run build clean, preview smoke
+200s on all routes. labs/ workspace = kit only (byzantine crates deleted);
+pack-labs.py PACKAGES updated to the 6 new labs (zip names, edit files,
+tests files are the contract); git repo initialized (master).
+
+**Next action — phase 2:** build labs/slotted-pages (template with todo!()
+bodies in src/page.rs + harness src/lib.rs emitting check ids
+insert_read/no_overlap/freespace_accounting/delete_reuse/storm +
+tests/page_tests.rs) and labs/_solutions/slotted-pages. Reference pattern:
+/root/byzantine/labs/kv-store (harness shape) + labs/kit/src/lib.rs (kslab
+ABI). Gate per lab: template N red / solution N green via cargo test, wasm
+ABI-verified headless (bun scripts/verify-wasm-lab.ts), template traps
+cleanly. Then lab 02 btree, then T0/T1 lesson content + Engine v0 sim.
