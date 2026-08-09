@@ -101,10 +101,10 @@ This is why operators watch hit rate like an ECG (\`pg_stat_database.blks_hit\` 
       simId: 'engine',
       title: 'First contact: find the working set',
       tasks: [
-        'Open The Engine, pick the oltp trace, set the pool to 8 frames, and run it to the end. Note the final hit rate.',
+        'Open The Engine, pick the oltp trace, set the pool to 8 frames, and let a few hundred references stream by. Note where the hit rate settles.',
         'Run the identical trace at 64 frames. Same requests, same order — only the frame count changed. Compare the hit-rate curves.',
         'Keep doubling until the hit rate stops climbing. The pool size where the curve bends is the trace\'s working set — write it down.',
-        'At the knee size, flip the eviction toggle between LRU and clock-sweep and rerun. Watch whether the curves separate. T0.L4 explains what you just saw.',
+        'At the knee size, switch on race to run LRU and clock-sweep over the same stream side by side. Watch whether the curves separate. T0.L4 explains what you just saw.',
       ],
       note: `What you just saw: hit rate vs pool size is a **knee curve**, and the knee sits at the working set. Below it, the pool thrashes — nearly every eviction is a near-future miss, so each added frame buys hit rate almost linearly. Above it, extra frames cache pages nobody re-reads, and the curve flattens toward 100% only as the whole trace fits. The trace player is deterministic — the identical request stream every run — so any difference between two runs is your knob, never luck. If your curves match a classmate's exactly, that is the determinism working, not a bug.`,
     },

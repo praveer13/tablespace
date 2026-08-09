@@ -85,7 +85,7 @@ The honest negative result, which the sim will show you: for a *pure* scan with 
       title: 'Watch the bet get lost',
       tasks: [
         'Run the mixed trace — OLTP with a periodic full scan — under LRU at pool size 32. Watch the hit-rate line dip at every scan and claw its way back.',
-        'Same trace, same pool, toggle to clock-sweep. Compare the curves: shallower dips, shorter recoveries, or both?',
+        'Same trace, same pool — now switch on race and run both policies side by side. Compare the curves: shallower dips, shorter recoveries, or both?',
         'Now run the pure scan trace under both policies. Neither curve should impress you — confirm the floor: zero reuse means no policy can win.',
         'Back on the mixed trace, try pool size 8 and 64 under both policies. Notice where the policy gap matters most.',
       ],
