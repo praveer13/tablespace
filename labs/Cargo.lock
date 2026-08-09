@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "btree"
+version = "0.1.0"
+dependencies = [
+ "kslab",
+]
+
+[[package]]
 name = "kslab"
 version = "0.1.0"
 

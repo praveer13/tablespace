@@ -1,3 +1,3 @@
 [workspace]
-members = ["kit", "slotted-pages"]
+members = ["kit", "slotted-pages", "btree"]
 resolver = "2"

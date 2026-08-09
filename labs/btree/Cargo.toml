@@ -1,0 +1,16 @@
+[package]
+name = "btree"
+version = "0.1.0"
+edition = "2021"
+description = "forge lab 02 — a B+tree with provable balance: splits, borrows, merges (tablespace)"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+kslab = { path = "../kit" }
+
+[profile.release]
+opt-level = 2
+debug = false
