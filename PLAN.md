@@ -251,26 +251,37 @@ them together." Spec it only after tablespace ships.
 ## RESUME POINT
 
 **Phase 1 DONE (2026-08-09, commit 09945d0):** forked byzantine →
-/root/tablespace, rebranded end-to-end (site strings, CNAME
-tablespace.play.naigap.com, llms.txt, logo, badge-t6.svg added, progress
-namespace `tablespace:v1`, query-plan rank ladder SEQ SCAN→SUPERUSER),
-registries swapped to the tablespace curriculum: 7 tracks / 25 lesson stubs
-(real titles+hooks+outlines, blocks marked in-development), 6 lab entries in
-src/data/labs.ts (check ids are the contract the Rust harnesses must emit),
-4 Crash Week drill cards written in full, Engine.tsx stub page at /engine.
-Fixed two dead links inherited from byzantine (`/forge/<id>` → `/labs/<id>`
-on the labs page; `/lab/<sim>` → `/<sim>` in exercise cards + linked-sim
-chips — **byzantine live still has these 404s; backport candidate**).
-Verified: tsc -b clean, eslint clean, bun run build clean, preview smoke
-200s on all routes. labs/ workspace = kit only (byzantine crates deleted);
-pack-labs.py PACKAGES updated to the 6 new labs (zip names, edit files,
-tests files are the contract); git repo initialized (master).
+/root/tablespace, rebranded end-to-end (CNAME tablespace.play.naigap.com,
+llms.txt, logo, badge-t6.svg, progress namespace `tablespace:v1`, rank
+ladder SEQ SCAN→SUPERUSER), registries swapped: 7 tracks / 25 lesson stubs,
+6 lab entries (check ids are the harness contract), 4 Crash Week drill
+cards in full, Engine stub at /engine. Fixed two dead links inherited from
+byzantine (`/forge/<id>` → `/labs/<id>`; `/lab/<sim>` → `/<sim>`) —
+**byzantine live still has these 404s; backport candidate**. tsc/eslint/
+build/preview all green; git repo initialized (master).
 
-**Next action — phase 2:** build labs/slotted-pages (template with todo!()
-bodies in src/page.rs + harness src/lib.rs emitting check ids
-insert_read/no_overlap/freespace_accounting/delete_reuse/storm +
-tests/page_tests.rs) and labs/_solutions/slotted-pages. Reference pattern:
-/root/byzantine/labs/kv-store (harness shape) + labs/kit/src/lib.rs (kslab
-ABI). Gate per lab: template N red / solution N green via cargo test, wasm
-ABI-verified headless (bun scripts/verify-wasm-lab.ts), template traps
-cleanly. Then lab 02 btree, then T0/T1 lesson content + Engine v0 sim.
+**Phase 2 in flight:**
+- lab 01 slotted-pages ✅ (commit 86bce49) — template 5 red/trap, solution
+  5/5 green via wasm ABI. Sets all crate conventions.
+- lab 02 btree ✅ (commit b0c69ac) — template 5 red/trap, solution 5/5
+  green. Arena repr, LEAF_MAX/INTERNAL_MAX=32, separator law
+  `keys[i] == min(children[i+1])`, student-written validate() is graded.
+- IN FLIGHT (background agents): T0 lessons ×4 (agent-6), T1 lessons ×4
+  (agent-7), Engine v0 buffer-pool/trace sim (agent-8), lab 03 wal with
+  crash-injection harness (agent-9), lab 04 mvcc with interleaving
+  scheduler (agent-10).
+
+**When agents return:** spot-check each gate (template red/solution green/
+wasm ABI via `bun scripts/verify-wasm-lab.ts`), `bunx tsc -b` + lint clean,
+commit per workstream. Then: labs 05 volcano + 06 hnsw (launch after 03/04
+land to avoid labs/Cargo.toml races), T2–T6 lessons, Crash Week already
+written. Phase 5: pack all zips, Playwright e2e on preview+live, deploy.
+
+**Conventions established (labs):** crate = Cargo.toml + src/lib.rs
+(harness: seeded xorshift Rng, BTreeMap models — never HashMap on wasm),
+src/<edit>.rs (student file, todo!() bodies, compiles clean, traps),
+tests/<edit>_tests.rs (lab_test! macro, one test per check). Solution at
+labs/_solutions/<lab>/ (own empty [workspace], kslab path "../../kit",
+gitignored). pack-labs.py ships templates only; fails on missing later
+labs until all 6 exist — expected. Check ids/labels must match
+src/data/labs.ts verbatim.
