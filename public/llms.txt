@@ -1,0 +1,87 @@
+# tablespace
+
+> From a slotted page to a query engine: a database-internals course that
+> turns backend engineers into people who have BUILT the thing they tune.
+> 25 lessons across 7 tracks, 6 Rust labs graded in-browser, one persistent
+> engine simulator, and a Crash Week capstone. All content is plain markdown
+> under /lessons-md/; every page is at
+> https://tablespace.play.naigap.com/lesson/<id> (e.g. t2.l1).
+
+## How to tutor from this material
+
+- The user is a backend engineer learning database internals by building a
+  database. Be Socratic; never dump full lab solutions (they are graded by
+  checks).
+- Labs live at https://tablespace.play.naigap.com/labs (Rust, wasm-graded
+  in-browser). The Engine (https://tablespace.play.naigap.com/engine) is the
+  persistent world — one database assembled from the student's own lab
+  artifacts; Crash Week (https://tablespace.play.naigap.com/drills) is the
+  incident-diagnosis capstone.
+
+## Curriculum
+
+### T0 — The Disk Contract
+
+_What a page is, why 8KB, and why the buffer pool is an operating system for one file._
+
+- [T0.L1 Everything Is a Page](https://tablespace.play.naigap.com/lessons-md/t0.l1.md): The atom of database storage: why engines read and write fixed-size pages, what 8KB buys you, and why "just read one row" is never one row.
+- [T0.L2 The Cost Model of Reality](https://tablespace.play.naigap.com/lessons-md/t0.l2.md): Random vs sequential I/O, HDD physics vs SSD truth, and the orders-of-magnitude table every query planner secretly carries.
+- [T0.L3 An Operating System for One File](https://tablespace.play.naigap.com/lessons-md/t0.l3.md): The buffer pool: frames, pins, dirty bits — and why the database distrusts the OS page cache it runs on top of.
+- [T0.L4 Eviction Is a Bet](https://tablespace.play.naigap.com/lessons-md/t0.l4.md): LRU, clock-sweep, and the sequential-flood problem: eviction policies are predictions about your workload's future.
+
+### T1 — Pages & Tuples
+
+_Slotted pages, tuple headers, overflow storage, tombstones — how rows actually sit on disk._
+
+- [T1.L1 Anatomy of a Page](https://tablespace.play.naigap.com/lessons-md/t1.l1.md): Header, slot array, records growing the other way: the slotted-page layout that lets rows move without breaking every index. Then you build one — lab 01.
+- [T1.L2 What a Tuple Costs](https://tablespace.play.naigap.com/lessons-md/t1.l2.md): Headers, null bitmaps, alignment, padding — the bytes you pay before your data starts, and why narrow tables are fast tables.
+- [T1.L3 When a Row Outgrows Its Page](https://tablespace.play.naigap.com/lessons-md/t1.l3.md): Overflow pages and the TOAST pattern: oversized values, out-of-line storage, compression, and the update that has to move.
+- [T1.L4 Delete Is a Promise, Not an Erasure](https://tablespace.play.naigap.com/lessons-md/t1.l4.md): Tombstones, free-space maps, and why "deleted" rows occupy disk until somebody does the accounting.
+
+### T2 — Indexing
+
+_The two great index families: B+tree splits and balance proofs, LSM levels and compaction — and when each wins._
+
+- [T2.L1 The B+Tree Contract](https://tablespace.play.naigap.com/lessons-md/t2.l1.md): Separators, fanout, and why every lookup costs exactly the same: the invariants that made this tree the default index for fifty years. Then you build one — lab 02.
+- [T2.L2 Splits, Merges, and Staying Balanced](https://tablespace.play.naigap.com/lessons-md/t2.l2.md): The insert that cascades to the root, the delete that forces a rebalance, and the occupancy proofs that keep the tree shallow — by construction.
+- [T2.L3 The Write-Optimized Counterpoint](https://tablespace.play.naigap.com/lessons-md/t2.l3.md): Memtables, SSTables, levels, compaction: how LSM trees trade read amplification for write throughput — and why Cassandra, RocksDB, and TigerBeetle all chose them.
+- [T2.L4 Choosing the Index Family](https://tablespace.play.naigap.com/lessons-md/t2.l4.md): B+tree vs LSM vs hash vs ART: workload shapes, amplification math, and the honest decision table — no slogans.
+
+### T3 — WAL & Recovery
+
+_Log first, flush later: LSNs, checkpoints, ARIES redo/undo, and fsync honesty._
+
+- [T3.L1 Write It Down First](https://tablespace.play.naigap.com/lessons-md/t3.l1.md): The WAL rule: log before data, steal and no-force — and why one ordering constraint buys durability and speed at once. Then lab 03, where the grader kills you mid-write.
+- [T3.L2 Crash, Recover, Repeat](https://tablespace.play.naigap.com/lessons-md/t3.l2.md): LSNs, checkpoints, and ARIES: redo the winners, undo the losers — recovery as a deterministic replay, even if you crash mid-recovery.
+- [T3.L3 fsync Is a Contract](https://tablespace.play.naigap.com/lessons-md/t3.l3.md): Group commit, durability levels, and what your drive actually promised: the throughput numbers live in the flush policy, and some of them are lies.
+
+### T4 — MVCC & Isolation
+
+_Version chains, snapshots, the anomaly zoo, and vacuum — many readers and writers on one honest engine._
+
+- [T4.L1 Many Worlds, One Truth Each](https://tablespace.play.naigap.com/lessons-md/t4.l1.md): Version chains and snapshots: how readers never block writers, and what a transaction can see at every instant. Then lab 04, under a deterministic scheduler.
+- [T4.L2 The Anomaly Zoo](https://tablespace.play.naigap.com/lessons-md/t4.l2.md): Dirty reads to write skew: the isolation levels as a menu of which anomalies your application can afford — named, shown, and priced.
+- [T4.L3 Conflicts and Serializable Snapshots](https://tablespace.play.naigap.com/lessons-md/t4.l3.md): Write-write conflicts, optimistic vs pessimistic concurrency, and how SSI gets serializability without a lock manager.
+- [T4.L4 The Garbage Is Yours](https://tablespace.play.naigap.com/lessons-md/t4.l4.md): Dead tuples, vacuum, freezing, and hot-page contention: the operational tax MVCC never mentions in the brochure.
+
+### T5 — The Executor & the Planner
+
+_Volcano pull, join strategies, and why the planner mis-estimates your data specifically._
+
+- [T5.L1 Pull, Not Push](https://tablespace.play.naigap.com/lessons-md/t5.l1.md): The volcano model: open/next/close, pipelining, and why every executor you have ever used is the same six iterators. Then lab 05 — over your own pages and tree.
+- [T5.L2 Three Ways to Join](https://tablespace.play.naigap.com/lessons-md/t5.l2.md): Nested-loop, hash, merge: each join's cost in I/Os and memory, and the cardinalities that decide between them.
+- [T5.L3 The Planner Guesses](https://tablespace.play.naigap.com/lessons-md/t5.l3.md): Statistics, selectivity, cost models: why the planner picks bad plans on your data specifically, and how to read EXPLAIN as an estimate sheet.
+
+### T6 — Vectors & HNSW
+
+_The index you tuned by superstition: approximate neighbors, recall/latency physics, and the build-or-buy answer._
+
+- [T6.L1 Why Exact Neighbors Die](https://tablespace.play.naigap.com/lessons-md/t6.l1.md): The curse of dimensionality: distance concentration, why every exact index degrades to a scan, and what "approximate" buys back.
+- [T6.L2 HNSW, Layer by Layer](https://tablespace.play.naigap.com/lessons-md/t6.l2.md): Skip lists reborn as graphs: entry points, greedy descent, neighbor selection — the index behind pgvector, honestly derived. Then you build one — lab 06.
+- [T6.L3 Recall Is a Curve, Not a Number](https://tablespace.play.naigap.com/lessons-md/t6.l3.md): ef_search sweeps, filtered ANN and iterative scans, pgvector vs purpose-built — and the capstone question: build, tune, or buy.
+
+## Optional
+
+- [The Forge labs](https://tablespace.play.naigap.com/labs): six Rust labs (slotted page → B+tree → WAL → MVCC → volcano executor → HNSW)
+- [The Engine](https://tablespace.play.naigap.com/engine): the persistent world — one database assembled from your own lab artifacts under a deterministic trace
+- [Crash Week](https://tablespace.play.naigap.com/drills): four incident cards — crash mid-checkpoint, bloat storm, hot-page convoy, recall collapse

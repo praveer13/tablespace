@@ -1,0 +1,91 @@
+# tablespace forge — local labs
+
+Real Rust. Your machine. Zero servers.
+
+Each lab is a small crate. You edit exactly one file (marked `TODO(you)`),
+prove it with `cargo test`, compile it to WebAssembly, and drop the `.wasm`
+onto the lab page — the site runs the **same checks** and records your
+completion. No account, no upload of your code, nothing leaves your machine
+except nothing at all.
+
+## The three lanes
+
+**Lane A — your own machine (fastest if you have Rust)**
+
+```sh
+rustup target add wasm32-unknown-unknown   # one time
+cd slotted-pages
+cargo test                                  # red → green
+cargo build --release --target wasm32-unknown-unknown
+# drop target/wasm32-unknown-unknown/release/slotted_pages.wasm
+# onto the lab page
+```
+
+Don't have Rust? `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+(Windows: https://rustup.rs)
+
+**Lane B — VS Code Dev Containers (zero local setup)**
+
+Open this folder in VS Code → "Reopen in Container". The image has the
+toolchain and the wasm target preinstalled. Then the Lane A commands.
+
+**Lane C — GitHub Codespaces (zero machine)**
+
+Open the tablespace repository in a Codespace — the repo's
+`.devcontainer` gives you the same environment. Burns your free GitHub
+quota, not ours.
+
+## The loop
+
+1. **Read the brief** on the lab page.
+2. **Edit the one file** with `TODO(you)` markers. Nothing else.
+3. `cargo test` until every check is green. The terminal and the site
+   run the identical suite — if it's green here, it's green there.
+4. **Build the wasm** (`--release`, target `wasm32-unknown-unknown`).
+5. **Drop the `.wasm` onto the lab page.** It runs in your browser, in a
+   sandbox, against the same checks. All green → lab complete (+XP).
+
+A `todo!()` left in your code makes the module trap — the site shows
+"not implemented yet". That's a feature, not a bug.
+
+## Labs
+
+| # | lab | track | you build |
+|---|-----|-------|-----------|
+| 01 | `slotted-pages/` | T1 | the page: slot array, records, byte-exact free-space accounting |
+| 02 | `btree/` | T2 | the index: separators, splits, merges, balance under adversarial orders |
+| 03 | `wal/` | T3 | durability: log-first ordering, checksums, idempotent crash recovery |
+| 04 | `mvcc/` | T4 | concurrency: versions, snapshots, visibility, write-write conflicts |
+| 05 | `volcano/` | T5 | the executor: pull-based scan/filter/join/aggregate over your own storage |
+| 06 | `hnsw/` | T6 | the capstone: approximate neighbors + a cost model, graded on honest curves |
+
+Labs build on each other like real life: lab 05's executor runs over the
+page layout from 01 and the tree from 02 — the templates say what to bring
+forward.
+
+## How grading works (honesty box)
+
+The checks live in `src/lib.rs` of each lab — read them, that's allowed.
+The site trusts the module you drop; this is the honor system, like every
+problem set you've ever done. Your portfolio artifact is the repo with your
+commit history, not our database. (A verified-badge server path is planned;
+your local pass will be re-gradable retroactively.)
+
+## Don't lose your work (two answers, both trivial)
+
+**Your code → git.** On day one, inside the unzipped folder:
+
+```sh
+git init && git add -A && git commit -m "lab 01: template"
+# then one commit per green check:
+#   git commit -am "insert_read green"
+```
+
+That repo — with its commit history — IS your portfolio artifact. Push it
+to a private GitHub repo and your work survives any laptop.
+
+**Your progress → JSON snapshot.** Everything the site tracks (lessons,
+quizzes, lab completions, XP, achievements, drill scores) lives in your
+browser's localStorage. Export a snapshot anytime from the
+**Progress page → data ownership → Export**, and re-import it on any
+device/browser. Local by default, portable on demand.

@@ -1,0 +1,3 @@
+[workspace]
+members = ["kit"]
+resolver = "2"
