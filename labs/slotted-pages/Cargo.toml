@@ -1,0 +1,16 @@
+[package]
+name = "slotted-pages"
+version = "0.1.0"
+edition = "2021"
+description = "forge lab 01 — an 8192-byte slotted page with byte-exact free-space accounting (tablespace)"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+kslab = { path = "../kit" }
+
+[profile.release]
+opt-level = 2
+debug = false
