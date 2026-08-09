@@ -14,7 +14,21 @@ name = "kslab"
 version = "0.1.0"
 
 [[package]]
+name = "mvcc"
+version = "0.1.0"
+dependencies = [
+ "kslab",
+]
+
+[[package]]
 name = "slotted-pages"
+version = "0.1.0"
+dependencies = [
+ "kslab",
+]
+
+[[package]]
+name = "wal"
 version = "0.1.0"
 dependencies = [
  "kslab",
