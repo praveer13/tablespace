@@ -250,34 +250,42 @@ them together." Spec it only after tablespace ships.
 
 ## RESUME POINT
 
-**Phase 1 DONE (2026-08-09, commit 09945d0):** forked byzantine →
-/root/tablespace, rebranded end-to-end (CNAME tablespace.play.naigap.com,
-llms.txt, logo, badge-t6.svg, progress namespace `tablespace:v1`, rank
-ladder SEQ SCAN→SUPERUSER), registries swapped: 7 tracks / 25 lesson stubs,
-6 lab entries (check ids are the harness contract), 4 Crash Week drill
-cards in full, Engine stub at /engine. Fixed two dead links inherited from
-byzantine (`/forge/<id>` → `/labs/<id>`; `/lab/<sim>` → `/<sim>`) —
-**byzantine live still has these 404s; backport candidate**. tsc/eslint/
-build/preview all green; git repo initialized (master).
+**EVERYTHING BUILT AND VERIFIED (2026-08-10). Deploy is the only step left.**
 
-**Phase 2 in flight:**
-- lab 01 slotted-pages ✅ (86bce49) — template 5 red/trap, solution 5/5 green.
-- lab 02 btree ✅ (b0c69ac) — arena repr, LEAF/INTERNAL_MAX=32, graded
-  student validate().
-- lab 03 wal ✅ (6768695) — crash-injection harness: Disk/Store seam with
-  analyzer tape, truncation mid-record + XOR payload flips, 40-crash storm;
-  5-mutant validated (UTF-8 backdoor found and closed).
-- lab 04 mvcc ✅ (06879a5) — deterministic interleaving scheduler
-  (200 schedules × 30 ops vs serial-SI reference), mutant-matrix proven.
-- T0 lessons ✅ (4e21ce8), T1 lessons ✅ (5391865 — byte-exact with lab 01),
-  T2 lessons ✅ (4b56039 — matches lab 02 constants).
-- Engine v0 ✅ (546c914) — buffer-pool sim: oltp/scan/mixed seeded traces,
-  LRU vs PG usage-count clock-sweep race mode. HONEST PHYSICS: 1-bit clock
-  does NOT beat LRU under floods (both crater at 0% on pure scan); shipped
-  variant shows measured +0.5–2pt. T0 exercise tasks synced to real UI.
-- IN FLIGHT (background agents): lab 05 volcano (agent-14), lab 06 hnsw
-  (agent-15, distance-count metering not wall-clock), T3+T4 lessons
-  (agent-12), T5+T6 lessons (agent-13).
+- Phase 1 ✅ (09945d0): fork + rebrand + skeletons. (Byzantine backport still
+  open: `/forge/<id>` → `/labs/<id>`, `/lab/<sim>` → `/<sim>` dead links.)
+- Labs ✅ ALL SIX, each gated template-red+trap / solution-green / wasm ABI:
+  01 slotted-pages (86bce49) · 02 btree (b0c69ac) · 03 wal crash-injection
+  (6768695) · 04 mvcc interleaving scheduler (06879a5) · 05 volcano
+  (24f2c8d) · 06 hnsw distance-count metering (4dccbe8). Mutant-validated
+  (03: 5 mutants, 04: matrix, 05: 3 mutants); hnsw bands calibrated from
+  measured reference (0.972 recall @ 9.6% scan cost; RECALL_FLOOR 0.90,
+  LATENCY_MAX 800 dists, curve = computed dominance).
+- Lessons ✅ ALL 25 (T0 4e21ce8 · T1 5391865 · T2 4b56039 · T3+T4 swept into
+  6768695 · T5+T6 098730b) — every track consistent with its lab's real
+  implementation constants and with drills.ts telemetry.
+- Engine v0 ✅ (546c914): buffer-pool sim, oltp/scan/mixed seeded traces,
+  LRU vs PG usage-count clock-sweep race (honest physics: both crater on
+  pure scan; clock +0.5–2pt on mixed). T0 exercise tasks synced to real UI.
+- Crash Week ✅ 4 incident cards (phase 1), e2e-graded WRONG/CORRECT.
+- Phase 5 verify ✅ (1d7e1c2): tsc/eslint/build clean; pack-labs.py packs
+  all 6 zips (templates only, todo!()s confirmed inside); ABI sweep 6/6
+  solution-pass + 6/6 template-trap; Playwright BOTH SUITES ALL GREEN on
+  preview (47 routes clean; 6 labs accept solutions 5/5, reject templates
+  "not implemented yet", reject cross-lab "wrong lab module"; 4 drills
+  grade + completion; engine steps; links: 46/46 resolve, placement modal,
+  capstone links, /25 totals). Suites at /tmp/pw/ts-verify.mjs +
+  ts-verify-links.mjs (rig: /tmp/node v22, /tmp/pw playwright).
+
+**Deploy (only remaining step):** create GitHub repo tablespace under the
+authenticated gh account (same as byzantine's), add remote, push master —
+.github/workflows/deploy.yml builds + deploys to GH Pages; enable Pages
+(source: GitHub Actions) in repo settings; CNAME file already ships
+tablespace.play.naigap.com; DNS wildcard *.play.naigap.com already resolves
+to GH Pages IPs (byzantine precedent); HTTPS cert auto-provisions. After
+deploy: re-run both e2e suites against
+https://tablespace.play.naigap.com (remember: deep links return 404 STATUS
+by design — the suite filters the navigation document).
 
 **When agents return:** spot-check each gate (template red/solution green/
 wasm ABI via `bun scripts/verify-wasm-lab.ts`), `bunx tsc -b` + lint clean,
