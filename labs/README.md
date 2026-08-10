@@ -59,6 +59,9 @@ A `todo!()` left in your code makes the module trap — the site shows
 | 04 | `mvcc/` | T4 | concurrency: versions, snapshots, visibility, write-write conflicts |
 | 05 | `volcano/` | T5 | the executor: pull-based scan/filter/join/aggregate over your own storage |
 | 06 | `hnsw/` | T6 | the capstone: approximate neighbors + a cost model, graded on honest curves |
+| 07 | `buffer-pool/` | T0 | the pool: pins, dirty writeback, LRU-K eviction under hostile traces |
+| 08 | `optimizer/` | T7 | the search: System R join-order DP, exact costs, interesting orders |
+| 09 | `columnar/` | T7 | the analytical engine: compressed columns, zone maps, vectorized batches |
 
 Labs build on each other like real life: lab 05's executor runs over the
 page layout from 01 and the tree from 02 — the templates say what to bring

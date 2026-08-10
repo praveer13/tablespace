@@ -42,6 +42,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "optimizer"
+version = "0.1.0"
+dependencies = [
+ "kslab",
+]
+
+[[package]]
 name = "rust-kv"
 version = "0.1.0"
 dependencies = [

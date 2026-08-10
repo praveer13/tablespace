@@ -1,0 +1,16 @@
+[package]
+name = "optimizer"
+version = "0.1.0"
+edition = "2021"
+description = "forge lab 08 — System R join-order dynamic programming over a pinned cost model (tablespace)"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+kslab = { path = "../kit" }
+
+[profile.release]
+opt-level = 2
+debug = false

@@ -215,7 +215,7 @@ const ACHIEVEMENTS: AchievementDef[] = [
     color: '#FFB224',
     derived: (s) =>
       Object.values(s.lessons).filter((l) => l.status === 'done').length >= TOTAL_LESSONS &&
-      ['rust-kv', 'slotted-pages', 'btree', 'wal', 'mvcc', 'volcano', 'hnsw'].every((id) =>
+      ['rust-kv', 'slotted-pages', 'btree', 'wal', 'mvcc', 'volcano', 'hnsw', 'buffer-pool', 'optimizer', 'columnar'].every((id) =>
         labDone(s, id),
       ),
   },
