@@ -37,12 +37,17 @@
 //!   * MAX_LAYERS — clamp sampled levels so a node never spans more than
 //!     MAX_LAYERS layers;
 //!   * no self-edges, no duplicate edges, no dangling ids;
-//!   * edges are SYMMETRIC: if v is a neighbor of u at layer l, then u is a
-//!     neighbor of v at layer l. When adding an edge overfills a list past
-//!     its cap, evict the FARTHEST entry (ties: the higher id) and remove
-//!     the reverse edge too — symmetry is an invariant, not a hope;
-//!   * every node is reachable from the entry point at layer 0 (insert must
-//!     connect every node to at least one existing node at layer 0).
+//!   * edges are DIRECTED: u listing v does not guarantee v lists u back.
+//!     When adding an edge overfills a list past its cap, re-run the
+//!     selection heuristic on the whole list (closest-first, keep x only if
+//!     closer to the list's owner than to every already-kept entry,
+//!     backfill closest) — pruning keeps lists DIVERSE, not just near, and
+//!     any reverse edge is untouched: asymmetry is normal;
+//!   * the graph is ONE piece: walking layer 0 from the entry point
+//!     (treating edges as traversable both ways) must reach every node —
+//!     insert must connect every node to at least one existing node at
+//!     layer 0, and the backfill rule keeps every list's degree high, so
+//!     islands do not form.
 //!
 //! ═══════════════════════════ THE RECIPES ════════════════════════════
 //!
@@ -56,8 +61,14 @@
 //!   2. greedy descent — from the entry point, walk layers top..=level+1
 //!      with a beam of 1 (move to any strictly closer neighbor, repeat);
 //!   3. at layers min(level, top)..=0, beam-search with ef_construction,
-//!      then connect to the CLOSEST candidates, up to the layer's cap —
-//!      linking both directions with the prune rule above;
+//!      then choose the neighbors — well-chosen meaning REACHABILITY, not
+//!      just proximity: walk the beam results closest-first and take
+//!      candidate x only if x is closer to the new node than to every
+//!      already-taken neighbor (edges spread across directions instead of
+//!      clumping into the nearest clique); if fewer than the cap qualify,
+//!      backfill with the closest skipped candidates so the degree stays
+//!      high. Add each chosen edge in both directions, each list pruned
+//!      independently with the same heuristic when it overfills;
 //!   4. if the new level beats the current maximum, this node is the new
 //!      entry point.
 //!
@@ -128,7 +139,7 @@ impl Hnsw {
 
     pub fn insert(&mut self, id: u32, vec: Vec<f32>) {
         let _ = (id, vec);
-        todo!("sample level; greedy descent; beam-search per layer; connect closest up to cap, symmetric with farthest-first pruning; crown a new entry point on a new maximum level")
+        todo!("sample level; greedy descent; beam-search per layer; diversified neighbor selection (take x iff x is closer to the new node than to every taken neighbor, backfill closest), edges both ways, per-list pruning; crown a new entry point on a new maximum level")
     }
 
     pub fn search(&self, meter: &mut Meter, query: &[f32], k: usize, ef_search: usize) -> Vec<(u32, f32)> {

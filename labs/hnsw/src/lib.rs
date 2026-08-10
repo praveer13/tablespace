@@ -66,16 +66,25 @@ const N_CLUSTERS: usize = 12;
 const N_QUERIES: usize = 50;
 const K: usize = 10;
 
-/// Squared L2 — the harness's own copy for ground truth. Unmetered: the
-/// exact scan's cost is N_VECTORS per query by definition.
-fn l2(a: &[f32], b: &[f32]) -> f32 {
-    a.iter().zip(b).map(|(x, y)| (x - y) * (x - y)).sum()
-}
-
 struct Corpus {
     vectors: Vec<Vec<f32>>,
     queries: Vec<Vec<f32>>,
     truth: Vec<Vec<u32>>, // exact top-K ids per query, (dist asc, id asc)
+}
+
+/// Exact top-K by full scan — the ground truth every check grades against.
+/// Metered internally: the exact scan pays N_VECTORS distances per query by
+/// definition — the baseline latency_win grades against.
+fn brute_force(vectors: &[Vec<f32>], query: &[f32]) -> Vec<u32> {
+    let mut meter = Meter::new();
+    let mut scored: Vec<(f32, u32)> = vectors
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (meter.dist(query, v), i as u32))
+        .collect();
+    scored.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    scored.truncate(K);
+    scored.into_iter().map(|(_, i)| i).collect()
 }
 
 /// The seeded corpus: ~4000 vectors in 32 dimensions from 12 gaussian
@@ -85,41 +94,29 @@ struct Corpus {
 fn corpus() -> Corpus {
     let mut rng = Rng(0x5EED_0606);
     let centers: Vec<Vec<f32>> = (0..N_CLUSTERS)
-        .map(|_| (0..DIM).map(|_| rng.uniform(-7.0, 7.0)).collect())
+        .map(|_| (0..DIM).map(|_| rng.uniform(-4.0, 4.0)).collect())
         .collect();
-    let mut vectors = Vec::with_capacity(N_VECTORS);
+    let mut vectors: Vec<Vec<f32>> = Vec::with_capacity(N_VECTORS);
     for _ in 0..N_VECTORS {
         if rng.below(100) < 15 {
             // uniform noise — the outliers no index should chase home
-            vectors.push((0..DIM).map(|_| rng.uniform(-9.0, 9.0)).collect());
+            vectors.push((0..DIM).map(|_| rng.uniform(-7.0, 7.0)).collect());
         } else {
             let c = &centers[rng.below(N_CLUSTERS)];
-            vectors.push((0..DIM).map(|d| c[d] + rng.gauss() * 0.55).collect());
+            vectors.push((0..DIM).map(|d| c[d] + rng.gauss() * 1.10).collect());
         }
     }
-    let mut queries = Vec::with_capacity(N_QUERIES);
+    let mut queries: Vec<Vec<f32>> = Vec::with_capacity(N_QUERIES);
     for i in 0..N_QUERIES {
         if i < 40 {
             let c = &centers[i % N_CLUSTERS];
-            queries.push((0..DIM).map(|d| c[d] + rng.gauss() * 0.30).collect());
+            queries.push((0..DIM).map(|d| c[d] + rng.gauss() * 0.50).collect());
         } else {
-            queries.push((0..DIM).map(|_| rng.uniform(-9.0, 9.0)).collect());
+            queries.push((0..DIM).map(|_| rng.uniform(-7.0, 7.0)).collect());
         }
     }
     let truth = queries.iter().map(|q| brute_force(&vectors, q)).collect();
     Corpus { vectors, queries, truth }
-}
-
-/// Exact top-K by full scan — the ground truth every check grades against.
-fn brute_force(vectors: &[Vec<f32>], query: &[f32]) -> Vec<u32> {
-    let mut scored: Vec<(f32, u32)> = vectors
-        .iter()
-        .enumerate()
-        .map(|(i, v)| (l2(query, v), i as u32))
-        .collect();
-    scored.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    scored.truncate(K);
-    scored.into_iter().map(|(_, i)| i).collect()
 }
 
 /* ------------------------- pinned parameters ------------------------ */
@@ -129,24 +126,28 @@ const BUILD_EFC: usize = 64;
 const EF_SEARCH: usize = 48; // beam width for recall/latency/curve
 const NAIVE_M: usize = 4;
 const NAIVE_EFC: usize = 20;
-const NAIVE_EF: usize = 200; // the superstition-tuned build's big beam
+const NAIVE_EF: usize = 300; // the naive build's BEST case: a cranked beam
 const INDEX_SEED: u64 = 0x5EED_1606;
 
 /* --------------------------- CALIBRATION ----------------------------
  * Every band below is a measured number, not a hope. Reference solution
- * (labs/_solutions/hnsw), this corpus, these pins, native x86-64:
+ * (labs/_solutions/hnsw), this corpus, these pins, native x86-64, 2026-08:
  *
- *   good build (m=16, efc=64) at ef=48:   recall@10 0.XXX, mean XXX.X dists/query
- *   naive build (m=4, efc=20) at ef=200:  recall@10 0.XXX, mean XXX.X dists/query
+ *   good build (m=16, efc=64) at ef=48:   recall@10 0.972, mean 384 dists/query
+ *   naive build (m=4, efc=20)  at ef=300:  recall@10 0.860, mean 554 dists/query
+ *   (naive at tiny ef is cheaper but hopeless — ef=32 gives recall 0.722 at
+ *    171 dists; dominance is only honest against the naive build's BEST
+ *    case, so the curve check cranks its beam to 300. It still loses both
+ *    axes: +0.112 recall at -31% cost.)
  *
- * RECALL_FLOOR  = reference recall minus ~6 points of headroom for
+ * RECALL_FLOOR  = reference recall (0.972) minus ~7 points of headroom for
  *                 legitimate implementation variation; ceiling is 1.0.
- * LATENCY_MAX   = ~2.5x the reference's measured mean, and ~1/8 of the
+ * LATENCY_MAX   = ~2.1x the reference's measured mean (384), and 20% of the
  *                 4000-distance exact scan either way.
  * The curve check needs no constants: dominance is computed, not banded.
  */
-const RECALL_FLOOR: f64 = 0.80; // PROVISIONAL — recalibrate
-const LATENCY_MAX: f64 = 700.0; // PROVISIONAL — recalibrate
+const RECALL_FLOOR: f64 = 0.90;
+const LATENCY_MAX: f64 = 800.0;
 
 /* ---------------------------- build/measure ------------------------- */
 
@@ -194,8 +195,9 @@ fn measure(c: &Corpus, h: &Hnsw, ef: usize) -> Result<(f64, f64), String> {
 /* ------------------------------ checks ------------------------------ */
 
 /// 1. graph_invariants: after inserting 2000 vectors with pinned params —
-/// every node reachable from the entry point at layer 0, degree caps
-/// honored per layer, no self-edges, no duplicates, edges symmetric.
+/// every node reachable from the entry point at layer 0 (edges treated as
+/// traversable both ways: edges are directed, but the graph must be one
+/// piece), degree caps honored per layer, no self-edges, no duplicates.
 pub fn check_graph_invariants() -> Check {
     const ID: &str = "graph_invariants";
     const LABEL: &str = "layers bounded, every node reachable from the entry point";
@@ -261,15 +263,20 @@ pub fn check_graph_invariants() -> Check {
                         "node {id} layer {l}: edge to node {v}, but node {v} only spans {} layer(s) — edges never dangle above a node's top",
                         h.layers_of(v)));
                 }
-                if !h.neighbors(v, l).contains(&id) {
-                    return Check::fail(ID, LABEL, format!(
-                        "asymmetry: node {id} lists node {v} at layer {l}, but {v} does not list {id} back — edges are symmetric; when you evict the farthest entry, remove the reverse edge too"));
-                }
             }
         }
     }
 
-    // reachability: BFS from the entry point at layer 0, pops capped at 10x
+    // reachability: BFS from the entry point at layer 0. Edges are directed,
+    // but the graph must be ONE piece — the walk treats every edge as
+    // traversable both ways. Pops capped at 10x (fail, never hang).
+    let mut adj: Vec<Vec<u32>> = vec![Vec::new(); N];
+    for id in 0..N as u32 {
+        for v in h.neighbors(id, 0) {
+            adj[id as usize].push(v);
+            adj[v as usize].push(id);
+        }
+    }
     let mut seen = vec![false; N];
     let mut queue = std::collections::VecDeque::from([ep]);
     seen[ep as usize] = true;
@@ -280,7 +287,7 @@ pub fn check_graph_invariants() -> Check {
         if pops > 10 * N {
             return Check::fail(ID, LABEL, format!("BFS walked past the safety cap of {} pops — your neighbor lists cycle or corrupt", 10 * N));
         }
-        for &v in &h.neighbors(u, 0) {
+        for &v in &adj[u as usize] {
             if !seen[v as usize] {
                 seen[v as usize] = true;
                 reached += 1;
@@ -290,10 +297,10 @@ pub fn check_graph_invariants() -> Check {
     }
     if reached != N {
         return Check::fail(ID, LABEL, format!(
-            "only {reached} of {N} nodes reachable from entry point {ep} at layer 0 — the graph is fragmented; insert must connect every node to at least one existing node at layer 0"));
+            "only {reached} of {N} nodes reachable from entry point {ep} at layer 0 — the graph is fragmented; insert must connect every node to at least one existing node at layer 0, and pruning must keep a node's closest edges"));
     }
     Check::pass(ID, LABEL, format!(
-        "{N} nodes, {max_layers} layers deep, every node reachable from entry point {ep}, degrees within caps, edges symmetric"))
+        "{N} nodes, {max_layers} layers deep, every node reachable from entry point {ep}, degrees within caps"))
 }
 
 /// 2. recall_band: pinned build, pinned ef_search — mean recall@10 over the
@@ -310,7 +317,7 @@ pub fn check_recall_band() -> Check {
     };
     if recall < RECALL_FLOOR {
         return Check::fail(ID, LABEL, format!(
-            "mean recall@10 = {recall:.3} over {N_QUERIES} seeded queries — below the calibrated floor of {RECALL_FLOOR:.2}. Suspect the beam: layer-0 search must keep ef = max(ef_search, k) live candidates, and insert must connect the CLOSEST candidates, not just any m"));
+            "mean recall@10 = {recall:.3} over {N_QUERIES} seeded queries — below the calibrated floor of {RECALL_FLOOR:.2}. Suspect the beam and the build: layer-0 search must keep ef = max(ef_search, k) live candidates, and neighbor selection must spread edges (closer to the new node than to every already-taken neighbor), not clump them"));
     }
     Check::pass(ID, LABEL, format!(
         "mean recall@10 = {recall:.3} over {N_QUERIES} queries — inside the calibrated band [{RECALL_FLOOR:.2}, 1.00]"))
@@ -370,7 +377,7 @@ pub fn check_planner_choice() -> Check {
 ///    Hnsw on the same corpus and measured on the harness's meter against
 ///    brute-force truth: the pinned build (m=16, ef_construction=64) at
 ///    ef_search=48 must DOMINATE the naive build (m=4, ef_construction=20)
-///    cranked to ef_search=200 — strictly better recall at equal-or-lower
+///    cranked to ef_search=300 — strictly better recall at equal-or-lower
 ///    cost, or strictly lower cost at equal-or-better recall. No bands:
 ///    dominance is computed from the two measured points.
 pub fn check_curve() -> Check {
@@ -392,7 +399,7 @@ pub fn check_curve() -> Check {
     let dominates = (r_good > r_naive && c_good <= c_naive) || (c_good < c_naive && r_good >= r_naive);
     if !dominates {
         return Check::fail(ID, LABEL, format!(
-            "your build (m={BUILD_M}, efc={BUILD_EFC}, ef={EF_SEARCH}): recall {r_good:.3} at {c_good:.0} dists/query; naive (m={NAIVE_M}, efc={NAIVE_EFC}, ef={NAIVE_EF}): recall {r_naive:.3} at {c_naive:.0}. You dominate neither axis — a well-built graph finds more truth with fewer distance evaluations; check neighbor selection (closest candidates) and the beam's stop rule"));
+            "your build (m={BUILD_M}, efc={BUILD_EFC}, ef={EF_SEARCH}): recall {r_good:.3} at {c_good:.0} dists/query; naive (m={NAIVE_M}, efc={NAIVE_EFC}, ef={NAIVE_EF}): recall {r_naive:.3} at {c_naive:.0}. You dominate neither axis — a well-built graph finds more truth with fewer distance evaluations; check neighbor selection (diverse, not just near) and the beam's stop rule"));
     }
     Check::pass(ID, LABEL, format!(
         "your build: recall {r_good:.3} at {c_good:.0} dists/query; naive: recall {r_naive:.3} at {c_naive:.0} — your point dominates. That IS the vector-database business case, measured"))
