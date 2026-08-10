@@ -68,6 +68,10 @@ Which brings us to the bill. Postgres's cost constants, with defaults:
 Look at \`random_page_cost = 4\`. On 1990s hardware the honest ratio was ~200; on your NVMe box it is ~1–2. The 4.0 is not a measurement — it is a fossil compromise that also folds in "some random pages will be cache hits anyway." And now the punchline you will use in production: **"the planner guessed wrong" is very often "the cost constants stopped matching your disk."** A query that flip-flops between index scan and seq scan right after a migration to faster storage is usually this table, not broken statistics. Re-price it for flash — practitioners start at \`random_page_cost = 1.1\` plus an honest \`effective_cache_size\` — and the flip-flop stops. T5 opens the whole cost model; today's takeaway is that the table exists, it is configuration, and its defaults were priced for a disk you no longer own.`,
     },
     {
+      type: 'lab',
+      lab: 'cost-model',
+    },
+    {
       type: 'quiz',
       questions: [
         {

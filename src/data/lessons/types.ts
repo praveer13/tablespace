@@ -136,6 +136,13 @@ export interface DeepdiveBlock {
   md: string
 }
 
+/** In-page interactive micro-lab (EXPANSION.md wave 1) — no toolchain, graded in-browser. */
+export interface LabBlock {
+  type: 'lab'
+  /** key into the browser-lab registry (src/components/browserlabs) */
+  lab: string
+}
+
 export type ContentBlock =
   | ProseBlock
   | CodeBlockData
@@ -146,6 +153,7 @@ export type ContentBlock =
   | ExerciseBlock
   | IsomorphismBlock
   | DeepdiveBlock
+  | LabBlock
 
 /* ------------------------------ lesson ------------------------------ */
 

@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import QuizBlock from '@/components/QuizBlock'
+import { BrowserLabView } from '@/components/browserlabs'
 import { useProgress } from '@/lib/progress'
 import { cn } from '@/lib/utils'
 import { SIM_INFO } from '@/data/lessons'
@@ -717,6 +718,8 @@ export function RenderBlock({ block, lesson, trackColor, h2Start }: RenderBlockP
       return <IsomorphismView block={block} />
     case 'deepdive':
       return <DeepdiveView block={block} trackColor={trackColor} />
+    case 'lab':
+      return <BrowserLabView lab={block.lab} trackColor={trackColor} />
     default:
       return null
   }
