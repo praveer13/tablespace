@@ -17,4 +17,17 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return;
+          const m = id.match(
+            /node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?((?:@[^/]+\/)?[^/]+)/
+          );
+          if (m) return "pkg-" + m[1].replace("@", "").replace("/", "-");
+        },
+      },
+    },
+  },
 });
