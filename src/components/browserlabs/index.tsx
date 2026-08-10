@@ -16,6 +16,12 @@ import { browserLabMeta } from '@/data/browser-labs'
 import { cn } from '@/lib/utils'
 import { useLabCompletion, type LabTask } from './shared'
 import CostModelLab from './CostModelLab'
+import PageSurgeryLab from './PageSurgeryLab'
+import BtreeSurgeonLab from './BtreeSurgeonLab'
+import WalReplayLab from './WalReplayLab'
+import VisibilityCourtLab from './VisibilityCourtLab'
+import PlanArenaLab from './PlanArenaLab'
+import HnswExplorerLab from './HnswExplorerLab'
 
 export type { LabTask }
 
@@ -87,6 +93,12 @@ export function LabShell({
 
 const REGISTRY: Record<string, (p: { trackColor: string }) => ReactNode> = {
   'cost-model': CostModelLab,
+  'page-surgery': PageSurgeryLab,
+  'btree-surgeon': BtreeSurgeonLab,
+  'wal-replay': WalReplayLab,
+  'visibility-court': VisibilityCourtLab,
+  'plan-arena': PlanArenaLab,
+  'hnsw-explorer': HnswExplorerLab,
 }
 
 /** Renders a `lab` content block. Unknown ids render a gentle placeholder. */
