@@ -10,30 +10,14 @@
  *   - <LabShell> provides the frame + task checklist + completion line
  */
 
-import { useEffect, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { Check, FlaskConical } from 'lucide-react'
-import { useProgress } from '@/lib/progress'
 import { browserLabMeta } from '@/data/browser-labs'
 import { cn } from '@/lib/utils'
+import { useLabCompletion, type LabTask } from './shared'
 import CostModelLab from './CostModelLab'
 
-export interface LabTask {
-  id: string
-  label: string
-  done: boolean
-  /** one-line hint shown until the task is done */
-  hint?: string
-}
-
-/** Record completion when every task is done. Call once per lab. */
-export function useLabCompletion(labId: string, tasks: LabTask[]): boolean {
-  const allDone = tasks.length > 0 && tasks.every((t) => t.done)
-  const recordSimTask = useProgress((s) => s.recordSimTask)
-  useEffect(() => {
-    if (allDone) recordSimTask(`blab:${labId}`, 'complete')
-  }, [allDone, labId, recordSimTask])
-  return allDone
-}
+export type { LabTask }
 
 /** The shared frame: header chip, interactive surface, task checklist. */
 export function LabShell({
