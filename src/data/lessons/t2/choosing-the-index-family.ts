@@ -6,24 +6,125 @@ const lesson: Lesson = {
   trackId: 't2',
   index: 4,
   title: 'Choosing the Index Family',
-  minutes: 11,
+  minutes: 12,
   hook: 'B+tree vs LSM vs hash vs ART: workload shapes, amplification math, and the honest decision table — no slogans.',
   exercise: 'quiz',
   blocks: [
     {
-      type: 'callout',
-      variant: 'info',
-      title: 'in development',
-      md: 'This lesson is being written — the outline below is the contract it will teach to.',
+      type: 'prose',
+      md: `Three lessons in, you own two families: the **B+tree** (read-optimized, updates in place, page-sized nodes) and the **LSM** (write-optimized, never updates in place, pays compaction debt). This lesson adds the two specialists — the **hash index** and the **radix trie** — and then does the honest thing with all four. There is no best index. There is a best *fit*, and the path to it is a short interrogation of the workload, answered with amplification math instead of slogans. Anyone who tells you a structure is simply "faster" has skipped the interrogation.`,
     },
     {
       type: 'prose',
-      md: `## What this lesson will cover
+      md: `## The questions that decide
 
-- The workload questions that decide: read:write ratio, point vs range, update-in-place tolerance.
-- Hash indexes: O(1) and useless for ranges — a specialist, not a default.
-- ART/tries: prefix compression for memory-resident speed, and why they live inside bigger systems.
-- The decision table: given a workload, name the family and defend it with amplification math.`,
+Before any structure is named, the workload answers three questions — plus two environmental facts that break ties:
+
+1. **Read:write ratio.** 10:1 reads (catalogs, user profiles, config) and 10:1 writes (events, metrics, logs) point at different families before any other fact arrives. This is the B+tree-vs-LSM axis, and T2.L3 already priced it: random read-modify-write per row vs sequential appends plus compaction debt.
+2. **Point vs range.** Pure equality (\`id = ?\`, session tokens) vs ordering and ranges (\`BETWEEN\`, \`ORDER BY\`, pagination, prefix scans). This question alone eliminates the hash index and half the arguments on the internet.
+3. **Update-in-place tolerance.** A row that churns in place (counters, balances, statuses) is a different tenant than an append-only event. In-place update is the B+tree's home turf; the LSM turns every update into a new version plus future compaction work — fine if writes were already the point, wasteful if reads dominate.
+
+Then the environment: **does the working set fit in RAM?** (In-memory, the page-size calculus that built the B+tree evaporates.) And **what do the keys look like?** Eight-byte ints and long shared-prefix strings reward very different structures.`,
+    },
+    {
+      type: 'prose',
+      md: `## Hash indexes: O(1), and useless for ranges
+
+Hash the key, probe the bucket, done. One I/O-class operation for equality — no descent, no separators, no balancing. That is the entire feature list. The structure stores *no order* — keys are scrambled by design — so \`>\`, \`BETWEEN\`, \`ORDER BY\`, prefix matches, and pagination are all full scans. A hash index is a specialist:
+
+- **Redis** is the pure form — a giant in-memory hash — and the moment it needed ranges it grew *sorted sets*, a different structure, because no amount of hashing yields order.
+- **MySQL's MEMORY engine** offers HASH indexes for exactly the pure-equality case.
+- **Postgres** has a hash access method (crash-safe since v10) that almost nobody uses — because nbtree answers equality nearly as fast (three levels, the top two cached in the buffer pool) *and* does everything else. A specialist has to be dramatically better at its one job to justify existing; next to a cached B+tree, it usually is not.
+
+Growth is the other tax. A static hash table resizes by rebuilding; real ones use extendible or linear hashing to grow a bucket at a time — machinery the B+tree simply does not need, because its resize is a split you already wrote in lab 02.`,
+    },
+    {
+      type: 'prose',
+      md: `## ART and the tries: prefix compression for memory
+
+Change the substrate and the winner changes. When the data is memory-resident there are no pages and no I/O units — only cache lines and pointer chases — and the comparison-based descent stops being obviously right. The **radix trie** descends by the key's own bytes: no key comparisons at internal nodes at all. Paths with a single child get compressed away (**path compression**), and prefixes shared by every key below a node are stored once (**prefix compression**) — a gift for long string keys, URLs, and composite keys with repeated leading columns.
+
+The **Adaptive Radix Tree** (Leis, Kemper, Neumann, 2013) makes it cache-tight: every inner node *adapts its width* — 4, 16, 48, or 256 children — to how full it actually is, so no node wastes cache lines on empty slots. DuckDB's indexes are ART; HyPer runs on it; ordered in-memory maps across the industry are tries in different clothes.
+
+So why doesn't ART replace the B+tree everywhere? Same reason the B+tree beat the binary tree in T2.L1: the substrate decides. A byte-at-a-time descent over small adaptive nodes is a cache-line feast and a page-I/O famine — on disk you want 8KB nodes holding hundreds of separators, not dozens of small nodes fetched a pointer at a time. ART lives *inside* bigger systems: the in-memory index of a store whose durable data lives in something else. (The LSM makes the same split-brain choice — skiplist memtable in RAM, SSTables on disk. Every serious engine is a different structure per substrate.)`,
+    },
+    {
+      type: 'prose',
+      md: `## The decision table
+
+No slogans — each cell is the amplification ledger from T2.L3 plus the fanout arithmetic from T2.L1, evaluated for one workload:
+
+| Workload shape | Family | The math that decides it |
+| --- | --- | --- |
+| Mixed OLTP: reads ≈ writes, ranges, updates in place | **B+tree** | Point reads ~1–2 I/Os (top levels cached); space amp low; write amp paid at page granularity, amortized by the buffer pool |
+| Append-heavy events/metrics: writes ≫ reads, scans over recent data | **LSM, leveled** | Write cost sequential + ~10–30× rewrite, amortized; bloom filters hold point reads to ~1 I/O; space ~1.1× |
+| Insert-only at maximum throughput, reads rare | **LSM, size-tiered** | Write amp ~4–10×, the practical floor; tolerated cost is O(runs) reads and ~2× merge space |
+| Pure point lookups, no ranges ever, memory-resident | **hash** | 1 probe vs a 3-level descent — a real but small win once the tree's top is cached; pays for itself only when order is truly worthless |
+| Ordered, in-memory, string/prefix-heavy keys | **ART / trie** | Prefix compression shrinks keys *and* nodes; cache-line descent beats separator binary search — in RAM, never on disk |
+
+Read the table's spine: the B+tree is the default not by tradition but by elimination — it is the only family that is *never disqualified*: decent write cost, best-in-class ranges, page-native durability. Every specialist wins its cell by being dramatically better at one workload and absent from the others. Choose a specialist when your workload genuinely lives in its cell; choose the default when it straddles two.`,
+    },
+    {
+      type: 'callout',
+      variant: 'warning',
+      title: 'Benchmark folklore',
+      md: `The phrase to retire: "X is faster than B-tree." Faster at *what*, at what read:write ratio, at what cache residency, on what key distribution? A hash micro-benchmark against a fully cached B+tree measures the descent you were already told was free; an LSM benchmark measured before compaction debt comes due measures the honeymoon. Every structure in this track is a payment plan, and a benchmark that doesn't state the workload is an invoice with no line items. One more honesty note: after you choose and build the index, the planner may still decline to use it — its cost model gets the final vote, and that argument is T5's.`,
+    },
+    {
+      type: 'statline',
+      stats: [
+        { value: '3', label: 'questions before any benchmark', hint: 'Read:write ratio · point vs range · update-in-place tolerance. Then: does it fit in RAM, and what do the keys look like?' },
+        { value: '1 probe', label: 'hash point lookup', hint: 'And zero order: >, BETWEEN, ORDER BY, and prefix matches are full scans. A specialist, not a default.' },
+        { value: '4/16/48/256', label: 'ART inner-node widths', hint: 'Adaptive fanout sized to occupancy, prefix-compressed keys, cache-line tight — memory-resident only.' },
+        { value: '~500', label: 'B+tree fanout, the default’s moat', hint: '3 fetches at 10M rows with the top levels cached — the number every specialist must beat on its one axis.' },
+      ],
+    },
+    {
+      type: 'quiz',
+      questions: [
+        {
+          q: 'A session cache: memory-resident, equality lookups only (token → session), reads and writes evenly mixed, and it will never need a range, a sort, or a prefix match. Which family, and what is the honest defense?',
+          options: [
+            'B+tree — it is the default, and defaults exist for a reason',
+            'LSM — the 50:50 write share demands sequential writes',
+            'Hash — the workload lives entirely in its cell: pure point lookups where one probe beats a descent, memory-resident so the page-size calculus does not apply, and order is genuinely worthless here',
+            'ART — string tokens make prefix compression decisive',
+          ],
+          correct: [2],
+          explanation:
+            'This is the one workload where the specialist wins outright: no ranges, ever, plus RAM residency. The defense must still be honest about the margin — a cached B+tree is nearly as fast on equality — so "hash" is right because the cell fits perfectly, not because O(1) is magic. Redis is this answer in production.',
+        },
+        {
+          q: 'Metrics ingestion: 50K writes/sec append-style, and reads are hourly range scans over the last 24 hours. Name the family and defend it with amplification math.',
+          options: [
+            'B+tree — range scans are its strength, and ranges are what this workload reads',
+            'LSM — writes outnumber reads by orders of magnitude, so pay for sequential appends plus amortized compaction (~10–30× rewrites, leveled) instead of a random page read-modify-write per sample; the hourly scans merge across runs, which is affordable precisely because they are hourly',
+            'Hash — ingestion is all point operations',
+            'ART — the working set of the last 24 hours fits in RAM',
+          ],
+          correct: [1],
+          explanation:
+            'The read:write ratio decides before anything else speaks: 50K writes/sec against hourly reads is the LSM\'s founding case (this is literally the Cassandra workload). The range-scan objection is real but priced: bloom-less merge iteration across runs costs more per scan, and the workload runs that scan rarely. Leveled compaction keeps even that bill bounded.',
+        },
+        {
+          q: 'Which of these claims are true? (Select all that apply.)',
+          multi: true,
+          options: [
+            'A hash index can serve ORDER BY efficiently as long as the table is small',
+            'An ART descends without key comparisons at internal nodes — it walks the key\'s own bytes, with path and prefix compression',
+            'A B+tree point lookup at 10M rows costs ~3 page fetches, and the top levels are usually buffer-pool resident',
+            'Size-tiered compaction is the strategy that minimizes read amplification',
+          ],
+          correct: [1, 2],
+          explanation:
+            'B and C are the two load-bearing facts of this track. A is backwards: hashing destroys order by design — small tables just make the resulting full scan cheap enough not to notice. D has the ledger inverted: size-tiered minimizes WRITE amplification (~4–10×); read amplification (O(runs) probes) is part of what it pays in exchange.',
+        },
+      ],
+    },
+    {
+      type: 'deepdive',
+      title: 'Going deeper: the honest comparisons',
+      md: `The ART paper — Leis, Kemper, Neumann, "The Adaptive Radix Tree: ARTful Indexing for Main-Memory Databases" (ICDE 2013) — is short and gorgeous, and DuckDB's ART implementation shows it in a shipping system. For the theorem-shaped version of "pick two to suffer": Athanassoulis et al., "Designing Access Methods: The RUM Conjecture" (EDBT 2016), which frames read, update, and memory overhead as the triangle every access method must lose one side of. Postgres's own docs chapter on index types is a one-read zoo tour — B-tree, hash, GiST, GIN, BRIN, each a different answer to a different workload shape — and Petrov's *Database Internals* chapters 2 and 7, read back to back, are the B+tree-vs-LSM argument in full. The CMU 15-445 index lectures tie the bow. Next: T3 makes whichever structure you chose durable — the log is the real database, and your tree is about to become its cache.`,
     },
   ],
 }
