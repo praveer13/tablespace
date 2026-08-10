@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { motion } from 'framer-motion'
 import {
@@ -23,7 +23,9 @@ import { cn } from '@/lib/utils'
  * two eviction policies (LRU, Postgres-style clock-sweep), and honest
  * counters. The sim state is pure data — the rng is a stored xorshift
  * integer — so reset replays the exact same trace, and race mode runs
- * both policies over identical references.
+ * both policies over identical references. A fourth mode, `public`,
+ * replays /traces/bp-public-trace.json reference for reference instead
+ * of the generator — the finite leaderboard stream (lab 07's exam).
  */
 
 const PAGE_SPACE = 10_000
@@ -37,7 +39,7 @@ const TICK_MS = 140
 const DEFAULT_SEED = 0xb0ff0001
 const EMPTY = -1
 
-type TraceMode = 'oltp' | 'scan' | 'mixed'
+type TraceMode = 'oltp' | 'scan' | 'mixed' | 'public'
 type Policy = 'lru' | 'clock'
 
 interface Frame {
@@ -75,6 +77,8 @@ interface Sim {
   scanCursor: number
   untilFlood: number
   floodLeft: number
+  trace: number[] | null // public mode: the loaded file refs (immutable, shared by reference)
+  tracePos: number // public mode: index of the next ref to replay
   pools: Record<Policy, Pool>
   log: LogLine[]
   lastBatch: number // refs applied in the most recent step (for flash tinting)
@@ -104,6 +108,13 @@ function oltpPage(s: Sim): number {
 }
 
 function nextPage(s: Sim): number {
+  if (s.mode === 'public') {
+    // the file is the stream: ref k of the sim is refs[k-1] of the file.
+    // stepRefs caps each batch, so tracePos never walks past the end.
+    const p = s.trace ? s.trace[s.tracePos] : 0
+    s.tracePos += 1
+    return p
+  }
   if (s.mode === 'scan') {
     const p = s.scanCursor
     s.scanCursor = (s.scanCursor + 1) % PAGE_SPACE
@@ -146,7 +157,7 @@ function makePool(frames: number): Pool {
   }
 }
 
-function makeSim(seed: number, mode: TraceMode, frames: number): Sim {
+function makeSim(seed: number, mode: TraceMode, frames: number, trace: number[] | null = null): Sim {
   const s: Sim = {
     seed,
     mode,
@@ -155,6 +166,8 @@ function makeSim(seed: number, mode: TraceMode, frames: number): Sim {
     scanCursor: 0,
     untilFlood: FLOOD_EVERY,
     floodLeft: 0,
+    trace,
+    tracePos: 0,
     pools: { lru: makePool(frames), clock: makePool(frames) },
     log: [],
     lastBatch: 0,
@@ -230,12 +243,17 @@ function applyRef(p: Pool, page: number, isWrite: boolean, policy: Policy, seq: 
 const pad4 = (n: number) => String(n).padStart(4, '0')
 
 function stepRefs(prev: Sim, writePct: number, n: number): Sim {
+  // public mode is finite: never step past the end of the file. Returning
+  // prev untouched once the trace is spent keeps the tick loop a no-op.
+  const remaining = prev.mode === 'public' ? (prev.trace ? prev.trace.length - prev.tracePos : 0) : n
+  const steps = Math.max(0, Math.min(n, remaining))
+  if (steps === 0) return prev
   const s: Sim = {
     ...prev,
     pools: { lru: clonePool(prev.pools.lru), clock: clonePool(prev.pools.clock) },
     log: prev.log.slice(),
   }
-  for (let k = 0; k < n; k++) {
+  for (let k = 0; k < steps; k++) {
     s.seq += 1
     const page = nextPage(s)
     // one rand per ref regardless of the knob → the page stream never
@@ -252,7 +270,7 @@ function stepRefs(prev: Sim, writePct: number, n: number): Sim {
       }
     }
   }
-  s.lastBatch = n
+  s.lastBatch = steps
   for (const policy of ['lru', 'clock'] as const) {
     const p = s.pools[policy]
     if (p.hist.length > HIST) p.hist = p.hist.slice(-HIST)
@@ -269,7 +287,7 @@ const ROADMAP = [
   {
     icon: Layers,
     title: 'the buffer pool, visible',
-    body: 'Frames, dirty bits, usage counts — pages cached, evicted, and flushed live above. Hit rate is the pulse; the sequential flood is the stress test. Shipping now: three trace shapes, two eviction policies, one honest set of counters.',
+    body: 'Frames, dirty bits, usage counts — pages cached, evicted, and flushed live above. Hit rate is the pulse; the sequential flood is the stress test. Shipping now: three seeded trace shapes plus the public exam stream, two eviction policies, one honest set of counters.',
   },
   {
     icon: Waves,
@@ -285,6 +303,15 @@ const ROADMAP = [
 
 const POLICY_COLOR: Record<Policy, string> = { lru: '#5CA8FF', clock: '#3EF2A4' }
 
+/** /traces/bp-public-trace.json — the one public leaderboard stream */
+interface PublicTrace {
+  name: string
+  shape: string
+  seed: number
+  pages: number
+  refs: number[]
+}
+
 export default function Engine() {
   const [sim, setSim] = useState<Sim>(() => makeSim(DEFAULT_SEED, 'oltp', 16))
   const [mode, setMode] = useState<TraceMode>('oltp')
@@ -294,8 +321,11 @@ export default function Engine() {
   const [speed, setSpeed] = useState(4)
   const [race, setRace] = useState(false)
   const [playing, setPlaying] = useState(true)
+  const [publicTrace, setPublicTrace] = useState<PublicTrace | null>(null)
+  const [traceStatus, setTraceStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
 
   const recordSimVisit = useProgress((s) => s.recordSimVisit)
+  const recordSimTask = useProgress((s) => s.recordSimTask)
   const setSimConfig = useProgress((s) => s.setSimConfig)
 
   useEffect(() => {
@@ -310,6 +340,12 @@ export default function Engine() {
     return () => window.clearTimeout(id)
   }, [mode, policy, frames, writePct, race, sim.seed, setSimConfig])
 
+  // mirror of the UI mode for the async trace fetch (read in .then, never in render)
+  const modeRef = useRef(mode)
+  useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
+
   const step = useCallback(
     (n: number) => {
       setSim((prev) => stepRefs(prev, writePct, n))
@@ -317,17 +353,58 @@ export default function Engine() {
     [writePct],
   )
 
+  // the public trace is finite: a run is complete once every ref was replayed
+  const publicDone =
+    sim.mode === 'public' &&
+    sim.trace !== null &&
+    sim.trace.length > 0 &&
+    sim.tracePos >= sim.trace.length
+
   useEffect(() => {
-    if (!playing) return
+    if (!playing || publicDone) return
     const id = window.setInterval(() => step(speed), TICK_MS)
     return () => window.clearInterval(id)
-  }, [playing, step, speed])
+  }, [playing, publicDone, step, speed])
 
-  const restart = (seed: number, m: TraceMode, f: number) => setSim(makeSim(seed, m, f))
+  useEffect(() => {
+    if (publicDone) recordSimTask('engine', 'public-trace-run')
+  }, [publicDone, recordSimTask])
+
+  const restart = (seed: number, m: TraceMode, f: number, trace?: number[]) =>
+    setSim(makeSim(seed, m, f, m === 'public' ? (trace ?? publicTrace?.refs ?? null) : null))
 
   const newTrace = () => {
     const seed = (Math.random() * 0x100000000) >>> 0 || 1
     restart(seed, mode, frames)
+  }
+
+  // public mode: there is exactly one trace — fetch it once, replay it forever.
+  // While the file is in flight the sim idles on an empty stand-in trace.
+  const selectPublic = () => {
+    setMode('public')
+    if (publicTrace) {
+      restart(publicTrace.seed, 'public', frames)
+      return
+    }
+    if (traceStatus === 'loading') return
+    setTraceStatus('loading')
+    fetch('/traces/bp-public-trace.json')
+      .then((r) => {
+        if (!r.ok) throw new Error(`http ${r.status}`)
+        return r.json() as Promise<PublicTrace>
+      })
+      .then((t) => {
+        setPublicTrace(t)
+        setTraceStatus('ready')
+        // swap the stand-in for the loaded replay — only if the user is
+        // still watching public mode (they may have switched away mid-load)
+        if (modeRef.current === 'public') {
+          setSim((prev) => makeSim(t.seed, 'public', prev.pools.lru.frames.length, t.refs))
+          setPlaying(true)
+        }
+      })
+      .catch(() => setTraceStatus('error'))
+    restart(sim.seed, 'public', frames, [])
   }
 
   const lruRate = hitRate(sim.pools.lru)
@@ -366,9 +443,9 @@ export default function Engine() {
           <button
             onClick={() => setPlaying((p) => !p)}
             className="rounded-md border border-line bg-surface-1 p-2 text-text-2 hover:text-text-1"
-            aria-label={playing ? 'pause' : 'play'}
+            aria-label={playing && !publicDone ? 'pause' : 'play'}
           >
-            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {playing && !publicDone ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
           <button
             onClick={() => step(1)}
@@ -386,12 +463,14 @@ export default function Engine() {
           >
             <RotateCcw className="h-4 w-4" />
           </button>
-          <button
-            onClick={newTrace}
-            className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-1 px-3 py-2 text-text-2 transition-colors hover:text-text-1"
-          >
-            <Shuffle className="h-4 w-4" /> new trace
-          </button>
+          {mode !== 'public' && (
+            <button
+              onClick={newTrace}
+              className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-1 px-3 py-2 text-text-2 transition-colors hover:text-text-1"
+            >
+              <Shuffle className="h-4 w-4" /> new trace
+            </button>
+          )}
 
           <span className="mx-1 hidden h-4 w-px bg-line sm:block" />
 
@@ -400,6 +479,9 @@ export default function Engine() {
               {m}
             </Chip>
           ))}
+          <Chip active={mode === 'public'} onClick={selectPublic}>
+            public
+          </Chip>
 
           <span className="mx-1 hidden h-4 w-px bg-line sm:block" />
 
@@ -458,7 +540,17 @@ export default function Engine() {
             />
           </span>
           <span className="ml-auto">
-            trace {mode} · hot set {HOT_SIZE.toLocaleString('en-US')}/{PAGE_SPACE.toLocaleString('en-US')} pages
+            {mode === 'public' ? (
+              <>
+                trace {publicTrace?.name ?? 'public'} ·{' '}
+                {publicTrace ? `${publicTrace.refs.length.toLocaleString('en-US')} refs · finite` : 'loading…'}
+              </>
+            ) : (
+              <>
+                trace {mode} · hot set {HOT_SIZE.toLocaleString('en-US')}/
+                {PAGE_SPACE.toLocaleString('en-US')} pages
+              </>
+            )}
           </span>
         </div>
       </motion.div>
@@ -471,7 +563,23 @@ export default function Engine() {
         className="mt-6 grid gap-4 lg:grid-cols-[1fr_320px]"
       >
         <div className="rounded-lg border border-line bg-surface-1 p-5">
-          {race ? (
+          {mode === 'public' && !publicTrace ? (
+            <div className="flex h-48 items-center justify-center">
+              {traceStatus === 'error' ? (
+                <p className="font-mono text-[12px] text-text-3">
+                  couldn't load <span className="text-text-2">/traces/bp-public-trace.json</span>
+                  {' — '}
+                  <button onClick={selectPublic} className="text-accent underline underline-offset-4">
+                    retry
+                  </button>
+                </p>
+              ) : (
+                <p className="animate-pulse font-mono text-[12px] text-text-3">
+                  loading the public trace…
+                </p>
+              )}
+            </div>
+          ) : race ? (
             <>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">
@@ -525,8 +633,10 @@ export default function Engine() {
             />
           )}
           <p className="mt-4 border-t border-line pt-3 font-mono text-[10px] text-text-3">
-            write {writePct}% of refs · dirty eviction = +1 write · miss = +1 read · same seed replays
-            this exact trace
+            write {writePct}% of refs · dirty eviction = +1 write · miss = +1 read ·{' '}
+            {mode === 'public'
+              ? 'the one public trace, replayed reference for reference'
+              : 'same seed replays this exact trace'}
           </p>
         </div>
 
@@ -553,6 +663,52 @@ export default function Engine() {
           </div>
         </div>
       </motion.div>
+
+      {/* public trace completion — the leaderboard callout */}
+      {publicDone && sim.trace && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="mt-6 rounded-lg border border-accent/40 bg-accent/5 p-6"
+        >
+          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-accent">
+            trace complete · {sim.trace.length.toLocaleString('en-US')} refs replayed
+          </p>
+          <p className="mt-3 font-mono text-sm">
+            {race ? (
+              <>
+                <span style={{ color: POLICY_COLOR.lru }}>lru {lruRate.toFixed(1)}%</span>
+                <span className="text-text-3"> · </span>
+                <span style={{ color: POLICY_COLOR.clock }}>clock-sweep {clockRate.toFixed(1)}%</span>
+              </>
+            ) : (
+              <span style={{ color: POLICY_COLOR[policy] }}>
+                {policy === 'lru' ? 'lru' : 'clock-sweep'} {hitRate(sim.pools[policy]).toFixed(1)}%
+              </span>
+            )}
+            <span className="text-text-3"> — final hit rate{race ? 's' : ''} on the public trace</span>
+          </p>
+          <p className="mt-3 max-w-2xl text-body-sm text-text-2">
+            This is the leaderboard trace — lab 07's public exam. Your replacer's score on this
+            exact stream is the rank.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Link
+              to="/leaderboard"
+              className="inline-flex items-center gap-2 rounded-md border border-accent/60 bg-accent/10 px-4 py-2 font-mono text-sm text-accent transition-colors hover:bg-accent/20"
+            >
+              the leaderboard <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/labs/buffer-pool"
+              className="inline-flex items-center gap-2 rounded-md border border-line bg-surface-1 px-4 py-2 font-mono text-sm text-text-2 transition-colors hover:text-text-1"
+            >
+              lab 07 · the engine's pulse
+            </Link>
+          </div>
+        </motion.div>
+      )}
 
       <motion.p
         initial={{ opacity: 0, y: 16 }}

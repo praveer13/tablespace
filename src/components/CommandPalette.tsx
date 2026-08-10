@@ -21,6 +21,7 @@ const INDEX: Item[] = [
   { id: 'engine', group: 'Pages', title: 'The Engine', crumb: '~/engine', to: '/engine', keywords: ['simulator', 'buffer pool', 'trace', 'storage'] },
   { id: 'labs', group: 'Pages', title: 'Labs', crumb: '~/labs', to: '/labs', keywords: ['forge', 'rust', 'wasm', 'graded'] },
   { id: 'drills', group: 'Pages', title: 'Crash Week', crumb: '~/drills', to: '/drills', keywords: ['incident', 'telemetry', 'diagnosis', 'capstone', 'crash'] },
+  { id: 'leaderboard', group: 'Pages', title: 'The Engine Leaderboard', crumb: '~/leaderboard', to: '/leaderboard', keywords: ['leaderboard', 'rank', 'competition', 'buffer pool', 'trace'] },
   { id: 'progress', group: 'Pages', title: 'Progress', crumb: '~/progress', to: '/progress', keywords: ['dashboard', 'xp', 'rank', 'streak'] },
   ...TRACKS.map<Item>((t) => ({
     id: `track-${t.id}`,

@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { to: '/engine', label: 'Engine' },
   { to: '/labs', label: 'Labs' },
   { to: '/drills', label: 'Drills' },
+  { to: '/leaderboard', label: 'Ranks' },
   { to: '/progress', label: 'Progress' },
 ]
 

@@ -8,6 +8,7 @@ import Forge from '@/pages/Forge'
 import ForgeLab from '@/pages/ForgeLab'
 import Engine from '@/pages/Engine'
 import Drills from '@/pages/Drills'
+import Leaderboard from '@/pages/Leaderboard'
 import Progress from '@/pages/Progress'
 import NotFound from '@/pages/NotFound'
 
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="/labs/:labId" element={<ForgeLab />} />
         <Route path="/engine" element={<Engine />} />
         <Route path="/drills" element={<Drills />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/progress" element={<Progress />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
