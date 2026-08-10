@@ -94,6 +94,10 @@ Note the emphasized word. A checkpoint is a **performance bookmark**: it bounds 
       md: `Crashing mid-recovery is not bad luck — it is the case the whole design is built around. Power comes back flaky, the kernel panics again, an ops person kills the "stuck" recovery: recovery must assume it will be interrupted and make every step restartable. That is why redo is guarded by LSN comparison instead of memory, why undo logs CLRs, and why an interrupted checkpoint is a non-event. If your recovery can be hurt by the thing it is recovering from, you do not have recovery.`,
     },
     {
+      type: 'lab',
+      lab: 'wal-replay',
+    },
+    {
       type: 'quiz',
       questions: [
         {

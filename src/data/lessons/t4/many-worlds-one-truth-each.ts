@@ -104,6 +104,10 @@ The invariant to hold while you code: **every world is one evaluation of the pre
       ],
     },
     {
+      type: 'lab',
+      lab: 'visibility-court',
+    },
+    {
       type: 'quiz',
       questions: [
         {
