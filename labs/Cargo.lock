@@ -10,6 +10,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "buffer-pool"
+version = "0.1.0"
+dependencies = [
+ "kslab",
+]
+
+[[package]]
+name = "columnar"
+version = "0.1.0"
+dependencies = [
+ "kslab",
+]
+
+[[package]]
 name = "hnsw"
 version = "0.1.0"
 dependencies = [

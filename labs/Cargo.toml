@@ -1,3 +1,3 @@
 [workspace]
-members = ["kit", "rust-kv", "slotted-pages", "btree", "wal", "mvcc", "volcano", "hnsw"]
+members = ["kit", "rust-kv", "slotted-pages", "btree", "wal", "mvcc", "volcano", "hnsw", "buffer-pool", "columnar"]
 resolver = "2"
