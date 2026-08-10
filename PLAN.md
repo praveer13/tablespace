@@ -261,15 +261,23 @@ byzantine (`/forge/<id>` → `/labs/<id>`; `/lab/<sim>` → `/<sim>`) —
 build/preview all green; git repo initialized (master).
 
 **Phase 2 in flight:**
-- lab 01 slotted-pages ✅ (commit 86bce49) — template 5 red/trap, solution
-  5/5 green via wasm ABI. Sets all crate conventions.
-- lab 02 btree ✅ (commit b0c69ac) — template 5 red/trap, solution 5/5
-  green. Arena repr, LEAF_MAX/INTERNAL_MAX=32, separator law
-  `keys[i] == min(children[i+1])`, student-written validate() is graded.
-- IN FLIGHT (background agents): T0 lessons ×4 (agent-6), T1 lessons ×4
-  (agent-7), Engine v0 buffer-pool/trace sim (agent-8), lab 03 wal with
-  crash-injection harness (agent-9), lab 04 mvcc with interleaving
-  scheduler (agent-10).
+- lab 01 slotted-pages ✅ (86bce49) — template 5 red/trap, solution 5/5 green.
+- lab 02 btree ✅ (b0c69ac) — arena repr, LEAF/INTERNAL_MAX=32, graded
+  student validate().
+- lab 03 wal ✅ (6768695) — crash-injection harness: Disk/Store seam with
+  analyzer tape, truncation mid-record + XOR payload flips, 40-crash storm;
+  5-mutant validated (UTF-8 backdoor found and closed).
+- lab 04 mvcc ✅ (06879a5) — deterministic interleaving scheduler
+  (200 schedules × 30 ops vs serial-SI reference), mutant-matrix proven.
+- T0 lessons ✅ (4e21ce8), T1 lessons ✅ (5391865 — byte-exact with lab 01),
+  T2 lessons ✅ (4b56039 — matches lab 02 constants).
+- Engine v0 ✅ (546c914) — buffer-pool sim: oltp/scan/mixed seeded traces,
+  LRU vs PG usage-count clock-sweep race mode. HONEST PHYSICS: 1-bit clock
+  does NOT beat LRU under floods (both crater at 0% on pure scan); shipped
+  variant shows measured +0.5–2pt. T0 exercise tasks synced to real UI.
+- IN FLIGHT (background agents): lab 05 volcano (agent-14), lab 06 hnsw
+  (agent-15, distance-count metering not wall-clock), T3+T4 lessons
+  (agent-12), T5+T6 lessons (agent-13).
 
 **When agents return:** spot-check each gate (template red/solution green/
 wasm ABI via `bun scripts/verify-wasm-lab.ts`), `bunx tsc -b` + lint clean,
