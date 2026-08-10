@@ -44,6 +44,9 @@ PACKAGES = [
     ("mvcc.zip", "mvcc", SHARED + crate_files("mvcc", "mvcc.rs", "mvcc_tests.rs")),
     ("volcano.zip", "volcano", SHARED + crate_files("volcano", "executor.rs", "executor_tests.rs")),
     ("hnsw.zip", "hnsw", SHARED + crate_files("hnsw", "hnsw.rs", "hnsw_tests.rs")),
+    ("buffer-pool.zip", "buffer-pool", SHARED + crate_files("buffer-pool", "pool.rs", "pool_tests.rs")),
+    ("optimizer.zip", "optimizer", SHARED + crate_files("optimizer", "planner.rs", "planner_tests.rs")),
+    ("columnar.zip", "columnar", SHARED + crate_files("columnar", "column.rs", "column_tests.rs")),
 ]
 
 
