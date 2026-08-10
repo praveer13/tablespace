@@ -250,44 +250,45 @@ them together." Spec it only after tablespace ships.
 
 ## RESUME POINT
 
-**v2 EXPANSION SHIPPED (2026-08-10, live + e2e-verified in production).**
+**WAVE 2 SHIPPED (2026-08-10, live + e2e-verified in production).** The
+15-445-parity + 15-721-tier wave per EXPANSION.md:
 
-Everything from v1 (below) plus, per EXPANSION.md wave 1:
-- **Tᴿ Rust Zero ramp** (7ff978c): 4 lessons (tr.l1–l4), fully wired —
-  TrackId/TRACKS first entry (slate #94A3B8, Wrench), TRACK_EXTRAS,
-  TOTAL_LESSONS=29, 'rustacean' achievement, address map 0x00/0x0E/0x1C,
-  placement recommendFor (0→tr, 1–5 keep old t1–t5), Home start link →
-  /lesson/tr.l1, badge-tr.svg, llms.txt Tᴿ section.
-- **export-lessons-md.ts fixed** (same commit): was kernelspace-flavored
-  (phase-1 miss) — now tablespace + handles lab blocks; 29 lessons-md
-  generated and shipped.
-- **Browser labs** (new block type 'lab'; framework fb9acaf/a96fc1f):
-  cost-model in t0.l2 (exemplar) · page-surgery t1.l1 + btree-surgeon
-  t2.l2 (7ff978c sweep) · wal-replay t3.l2 + visibility-court t4.l1
-  (e8b93f9) · plan-arena t5.l2 + hnsw-explorer t6.l2 (94fa184).
-  Components in src/components/browserlabs/; metadata src/data/browser-labs.ts;
-  completion recorded as sim task blab:<id>. Briefs' arithmetic caught and
-  fixed by builders: NVMe crossover direction (cost-model), 3|2 split at
-  display capacity (btree), stale-stats vs correlated-predicate (plan-arena).
-- **Verified live**: ts-verify.mjs 80 checks ALL GREEN (all routes incl.
-  /tracks/tr, 29 lessons, 6 forge flows, 4 drills, 7 browser-lab renders,
-  engine steps); ts-verify-links.mjs ALL GREEN (51 links, placement,
-  capstone links, /29 totals). Suites at /tmp/pw/ts-verify*.mjs.
-- Deploy: push to master → GH Actions → https://tablespace.play.naigap.com.
+- **T7 "The Analytical Turn"** (new track, #A3E635/Cpu): columnar layout,
+  vectorized execution, optimizer search (System R DP → Cascades/optd).
+- **Parity lessons**: t0.l5 LRU-K (five-minute rule → 15-445 P1), t2.l5
+  extendible/linear hashing, t2.l6 latch crabbing (Lehman-Yao), t4.l5
+  2PL/OCC, t5.l4 external sorting. High-key-fence forward-refs in t2.l1/l2
+  deepdives retargeted to t2.l6.
+- **lab 00 rust-kv** (e397bcf): forge warmup — template ships 5 deliberate
+  compile errors (each its own function body because rustc masks
+  later-phase errors; verbatim rustc output in the agent report), then
+  cas + scan_prefix. NO template wasm by design ("fixing it IS the lab");
+  e2e skips its template flow via noTpl flag.
+- Counts: **37 lessons, 9 tracks (tr, t0–t7), 7 forge labs**. TOTAL_LESSONS
+  =37; track counts t0=5, t2=6, t4=5, t5=4; address map 0x00/0x12/0x24;
+  Curriculum "Nine tracks, thirty-seven lessons"; capstone connector
+  "requires T0–T7"; superuser achievement requires all 7 labs; badge-t7.svg.
+- lessons-md + llms.txt regenerated (37 lessons, script-driven).
+- e2e: both suites ALL GREEN live (61 internal links; /37/ totals; t7
+  routes; rust-kv solution flow).
 
-**Wave 2 (specced in EXPANSION.md, not built):** parity lessons (extendible
-hashing, external merge sort, 2PL/OCC, latch crabbing, LRU-K), 15-721 tier
-(columnar/vectorized, optimizer search), lab 00 rust-kv forge warmup.
+**Wave 3 candidates (not specced yet):** 15-445 has nothing left we lack
+for its core arc; possible next: buffer-pool forge lab (LRU-K replacer as
+lab 07), query-optimizer forge lab (join-order DP graded on cost), columnar
+forge lab (vectorized scan over compressed columns), CI-verified
+leaderboard (kernelspace NEXT.md pattern), trace-mode expansion in The
+Engine (real TPC-C traces). Decide with the user.
 
 ---
 
-*v1 build record (all landed):* Phase 1 fork+rebrand (09945d0) · labs 01
-slotted-pages (86bce49), 02 btree (b0c69ac), 03 wal crash-injection
-(6768695), 04 mvcc scheduler (06879a5), 05 volcano (24f2c8d), 06 hnsw
-(4dccbe8) — every lab template-red+trap / solution-green / wasm-ABI gated,
-mutant-validated · 25 lessons T0–T6 · Engine v0 sim (546c914) · Crash Week
-4 drills · v1 deploy + live e2e ALL GREEN · byzantine dead-link backport
-(db6ee65, deployed, green).
+*v2 record:* Tᴿ Rust Zero ramp (7ff978c) + 7 browser labs (framework
+fb9acaf; cost-model exemplar; wal/visibility e8b93f9; plan/hnsw 94fa184;
+page/btree swept into 7ff978c) + export-lessons-md fix.
+
+*v1 record:* fork+rebrand (09945d0) · 6 forge labs gated+mutant-validated
+(86bce49, b0c69ac, 6768695, 06879a5, 24f2c8d, 4dccbe8) · 25 lessons ·
+Engine v0 (546c914) · Crash Week · deploy + live e2e green · byzantine
+backport (db6ee65).
 
 **When agents return:** spot-check each gate (template red/solution green/
 wasm ABI via `bun scripts/verify-wasm-lab.ts`), `bunx tsc -b` + lint clean,
