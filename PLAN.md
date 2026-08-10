@@ -250,36 +250,44 @@ them together." Spec it only after tablespace ships.
 
 ## RESUME POINT
 
-**WAVE 3 SHIPPED (2026-08-10, live + e2e-verified).** The forge-lab wave —
-every tier now has a graded build. **10 forge labs total.**
+**WAVE 4 SHIPPED (2026-08-10, live + e2e-verified). THE COURSE IS COMPLETE.**
 
-- lab 07 buffer-pool (34473a3): LRU-K, O'Neil history-list discipline,
-  +∞ for <K-touch pages, pins outrank everything; plain-LRU mutant 0/12
-  on scan_resistance.
-- lab 08 optimizer (c3e130c): System R DP; integer fixed-point costs (u64
-  milliunits, u128 saturating intermediates, order-independent rows_of);
-  interesting orders graded; bands brute-force-calibrated (optimum unique
-  among 792 valid plans; beats_naive factor 1.20× = 60% of measured min).
-- lab 09 columnar (e4d57ce): dict/RLE/Raw blocks of 2048, zone maps
-  (may_match canonical), vectorized filter+sum with blocks_read counting;
-  compression band measured (2.67× reference); storm ceilings computed,
-  not guessed (3,751 vs 7,500 blocks vs row-store).
-- README table rows 07–09; superuser achievement spans all 10 labs; all
-  10 zips packed; e2e extended (both suites ALL GREEN live incl. the 3
-  new solution+template flows).
+37 lessons · 9 tracks · 10 forge labs · 7 browser labs · 4 Crash Week
+drills · Engine sim with 4 trace modes · CI-verified leaderboard.
 
-**Course state: 37 lessons · 9 tracks · 10 forge labs · 7 browser labs ·
-4 Crash Week drills · Engine sim.**
+Wave 4 pieces:
+- **Public trace** (bf5ef05): `scripts/gen-public-trace.ts` emits ONE
+  seeded TPC-C-shaped stream (11,988 refs, 10k pages, 45% hot/35% zipf-mid/
+  20% uniform + flood) to both consumers: public/traces/bp-public-trace.json
+  (Engine) + labs/buffer-pool/src/public_trace.rs (lab harness).
+- **CI leaderboard** (3bbb96a): kslab report v2 with metrics.public_trace
+  (32 frames; kit gained report_json — additive); sandboxed bun runner
+  scripts/leaderboard-run.ts (empty-import assertion + internal-consistency
+  checks) + publish-side scripts/leaderboard-merge.ts (revalidates all
+  fields); two workflows: leaderboard-validate.yml (pull_request,
+  contents:read) → leaderboard-publish.yml (workflow_run, master-side,
+  contents:write, submissions-only guard). SUBMISSIONS.md + seed
+  public/leaderboard.json with LRU-K baseline **2751 bps** (27.51%).
+- **Engine public mode + /leaderboard page** (7e0f0bb): bit-exact replay,
+  finite run auto-stops, completion banner with per-policy hit rates,
+  recordSimTask('engine','public-trace-run'); Leaderboard.tsx renders the
+  ranked board (reference-lruk pinned as "the bar"); Ranks in nav/palette.
+- **Performance** (7786516 + 762d3c9): per-package vendor manualChunks +
+  route-level React.lazy — first-paint JS 795kB → ~60kB; lesson registry
+  (445kB) loads only with curriculum/lesson routes; >500kB warning gone.
+- e2e: fresh-page mid-suite (chromium tab OOM after ~60 heavy
+  navigations); new checks: /leaderboard baseline row, public-trace run
+  completes with banner. Both suites ALL GREEN in production.
 
-**Wave 4 (final, remaining):** Engine real-trace mode (TPC-C shape),
-CI-verified leaderboard (zero-server pattern from kernelspace NEXT.md),
-bundle code-split (the >500kB warning), final polish. Then the course is
-complete.
+**Competition is live:** PRs adding submissions/<user>.{wasm,json} get
+CI-verified and merged to the board (see SUBMISSIONS.md). Publish lag =
+one deploy cycle.
 
----
-
-*v1–v2 records above: fork+labs 00–06+25 lessons+Engine+Crash Week (v1);
-Tᴿ ramp + 7 browser labs (v2a); T7 + parity lessons + lab 00 (v2b).*
+Optional future polish (not planned): lessons content lazy-per-lesson
+(445kB shared chunk could split further), Engine student-wasm plug-in
+(load your buffer_pool.wasm INTO the sim — the Fleet pattern's last
+promise), wave-5 content if the series goes further (time-series/LSM lab,
+query-execution wasm lab over the columnar store).
 
 **When agents return:** spot-check each gate (template red/solution green/
 wasm ABI via `bun scripts/verify-wasm-lab.ts`), `bunx tsc -b` + lint clean,
