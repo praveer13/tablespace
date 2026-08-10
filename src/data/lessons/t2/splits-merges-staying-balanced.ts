@@ -110,6 +110,10 @@ Each shape stresses a different line of your implementation: the split arithmeti
       ],
     },
     {
+      type: 'lab',
+      lab: 'btree-surgeon',
+    },
+    {
       type: 'quiz',
       questions: [
         {

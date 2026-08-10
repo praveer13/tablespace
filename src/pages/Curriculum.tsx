@@ -86,7 +86,11 @@ const PLACEMENT: { q: string; options: string[]; correct: number }[] = [
 ]
 
 function recommendFor(score: number): TrackId {
-  return (['t0', 't1', 't2', 't3', 't4', 't5'] as TrackId[])[Math.min(score, 5)]
+  // 0 → the Tᴿ ramp (new base of the stack); 1–5 keep the old t1–t5
+  // recommendations, so a perfect score still lands on t5 (index 6).
+  return (['tr', 't0', 't1', 't2', 't3', 't4', 't5', 't6'] as TrackId[])[
+    score === 0 ? 0 : Math.min(score + 1, 6)
+  ]
 }
 
 function PlacementModal({ onClose }: { onClose: () => void }) {
@@ -362,7 +366,7 @@ export default function CurriculumPage() {
             <p className="font-mono text-label uppercase text-text-3">0x02 — address space map</p>
             <h1 className="mt-3 font-display text-display-lg text-text-1">Curriculum</h1>
             <p className="mt-4 max-w-measure text-body-lg text-text-2">
-              Seven tracks, twenty-five lessons, one capstone. The stack reads bottom to top: disk
+              Eight tracks, twenty-nine lessons, one capstone. The stack reads bottom to top: disk
               physics at the base, vector indexes at the summit. Every layer is unlocked — the order is the point.
             </p>
             {/* legend */}

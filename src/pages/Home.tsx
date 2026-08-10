@@ -30,7 +30,7 @@ export default function Home() {
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link
-            to="/lesson/t0.l1"
+            to="/lesson/tr.l1"
             className="inline-flex items-center gap-2 rounded-md border border-accent/60 bg-accent/10 px-5 py-2.5 font-mono text-sm text-accent transition-colors hover:bg-accent/20"
           >
             start the curriculum <ArrowRight className="h-4 w-4" />

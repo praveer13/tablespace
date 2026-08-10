@@ -137,6 +137,10 @@ The invariant to hold in your head while you code, because the storm proves it t
 and no two live records' byte ranges ever intersect. \`free_space()\` is contiguous + dead_bytes, and it is a number you **maintain from the header fields on each op — never a scan**. Accounting is data.`,
     },
     {
+      type: 'lab',
+      lab: 'page-surgery',
+    },
+    {
       type: 'quiz',
       questions: [
         {

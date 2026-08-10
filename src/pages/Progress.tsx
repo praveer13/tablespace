@@ -1,7 +1,7 @@
 /**
  * PROGRESS — /progress (progress.md).
  * "htop for your brain": rank panel, KPI tweens, per-track memory-map bars,
- * GitHub-style heatmap, 12 achievements, export/import/reset with double-confirm.
+ * GitHub-style heatmap, 15 achievements, export/import/reset with double-confirm.
  * Consumes src/lib/progress.ts as-is.
  */
 
@@ -26,6 +26,7 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -93,6 +94,14 @@ const ACHIEVEMENTS: AchievementDef[] = [
     icon: Power,
     color: '#3EF2A4',
     derived: (s) => Object.values(s.lessons).some((l) => l.status === 'done'),
+  },
+  {
+    id: 'track-tr',
+    name: 'rustacean',
+    cond: 'complete Tᴿ — Rust Zero',
+    icon: Wrench,
+    color: '#94A3B8',
+    derived: (s) => trackDone(s, 'tr', 4),
   },
   {
     id: 'track-t0',
@@ -500,12 +509,12 @@ function TrackBreakdown() {
             </div>
             <div className="flex h-[240px] flex-col justify-between font-mono text-[10px] text-text-3">
               <span>0x00</span>
-              <span>0x0C</span>
-              <span>0x18</span>
+              <span>0x0E</span>
+              <span>0x1C</span>
             </div>
           </div>
           <p className="mt-3 font-mono text-[10px] text-text-3">
-            25 lesson blocks · solid = allocated · glow = next instruction
+            29 lesson blocks · solid = allocated · glow = next instruction
           </p>
         </motion.div>
       </div>

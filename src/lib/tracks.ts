@@ -14,6 +14,7 @@ import {
   Radar,
   ShieldCheck,
   Workflow,
+  Wrench,
 } from 'lucide-react'
 
 export interface TrackMeta {
@@ -29,6 +30,17 @@ export interface TrackMeta {
 }
 
 export const TRACKS: TrackMeta[] = [
+  {
+    code: 'Tᴿ',
+    id: 'tr',
+    name: 'Rust Zero',
+    color: '#94A3B8',
+    glyph: Wrench,
+    promise: 'Just enough Rust to build a database: ownership, enums, and the forge loop.',
+    lessons: 4,
+    exercises: 4,
+    hours: 2,
+  },
   {
     code: 'T0',
     id: 't0',

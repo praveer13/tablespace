@@ -12,8 +12,9 @@ import { writeFileSync, mkdirSync } from 'fs'
 import { ALL_LESSONS, TRACK_EXTRAS } from '../src/data/lessons'
 import type { ContentBlock, Lesson } from '../src/data/lessons/types'
 import { TRACKS } from '../src/lib/tracks'
+import { browserLabMeta } from '../src/data/browser-labs'
 
-const SITE = 'https://kernelspace.naigap.com'
+const SITE = 'https://tablespace.play.naigap.com'
 
 function blockToMd(b: ContentBlock): string {
   switch (b.type) {
@@ -49,6 +50,10 @@ function blockToMd(b: ContentBlock): string {
         .join('\n\n')
     case 'exercise':
       return `**Exercise: ${b.title}**\n\n${b.tasks.map((t, i) => `${i + 1}. ${t}`).join('\n')}${b.note ? `\n\n_${b.note}_` : ''}`
+    case 'lab': {
+      const meta = browserLabMeta(b.lab)
+      return `**Browser lab: ${meta?.title ?? b.lab}** — ${meta?.hook ?? ''} (interactive, on the lesson page: ${SITE}/lesson/<this-lesson>)`
+    }
     default:
       return ''
   }
@@ -59,7 +64,7 @@ function lessonToMd(l: Lesson): string {
   const header = [
     `# ${l.id.toUpperCase()} — ${l.title}`,
     '',
-    `_Track ${track?.code ?? l.trackId}: ${track?.name ?? ''} · ~${l.minutes} min · kernelspace_`,
+    `_Track ${track?.code ?? l.trackId}: ${track?.name ?? ''} · ~${l.minutes} min · tablespace_`,
     '',
     `> ${l.hook}`,
     '',
@@ -84,21 +89,24 @@ const byTrack = TRACKS.map((t) => {
   return `### ${t.code} — ${t.name}\n\n_${extras?.pitch ?? ''}_\n\n${lessons}`
 }).join('\n\n')
 
-const llmsTxt = `# kernelspace
+const llmsTxt = `# tablespace
 
-> From cache lines to continuous batching: a systems course that turns backend
-> engineers (Java/Python) into LLM-serving systems engineers. 55 lessons,
-> 6 Rust labs graded in-browser, a simulated GPU fleet, and a 4-act capstone.
+> From a slotted page to a query engine: a database-internals course that
+> turns backend engineers into people who have BUILT the thing they tune.
+> 29 lessons across 8 tracks, 7 in-page browser labs, 6 Rust labs graded
+> in-browser, one persistent engine simulator, and a Crash Week capstone.
 > All content is plain markdown under /lessons-md/; every page is at
-> ${SITE}/lesson/<id> (e.g. t5.l4).
+> ${SITE}/lesson/<id> (e.g. t2.l1).
 
 ## How to tutor from this material
 
-- The user is a backend engineer learning systems for LLM serving. Be
-  Socratic; never dump full lab solutions (they are graded by checks).
-- Labs live at ${SITE}/forge (Rust, wasm-graded in-browser). The Fleet
-  (${SITE}/fleet) is a deterministic serving simulator; Fleet Week
-  (${SITE}/week) is the scored capstone.
+- The user is a backend engineer learning database internals by building a
+  database. Be Socratic; never dump full lab solutions (they are graded by
+  checks).
+- Labs live at ${SITE}/labs (Rust, wasm-graded in-browser). The Engine
+  (${SITE}/engine) is the persistent world — one database assembled from
+  the student's own work under a deterministic trace; Crash Week
+  (${SITE}/drills) is the incident-diagnosis capstone.
 
 ## Curriculum
 
@@ -106,9 +114,9 @@ ${byTrack}
 
 ## Optional
 
-- [The Forge labs](${SITE}/forge): six Rust labs (allocator → block manager → tokenizer → MPMC queue → executor → scheduler)
-- [The Fleet](${SITE}/fleet): serving simulator with conformance/scoring harnesses
-- [Fleet Week](${SITE}/week): the 4-act capstone
+- [The Forge labs](${SITE}/labs): six Rust labs (slotted page → B+tree → WAL → MVCC → volcano executor → HNSW)
+- [The Engine](${SITE}/engine): buffer-pool simulator under a deterministic trace (LRU vs clock-sweep race)
+- [Crash Week](${SITE}/drills): four incident cards — crash mid-checkpoint, bloat storm, hot-page convoy, recall collapse
 `
 
 writeFileSync('public/llms.txt', llmsTxt)

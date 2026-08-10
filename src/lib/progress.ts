@@ -94,7 +94,7 @@ export const XP = {
   fleetWeekAct: 250,
 } as const
 
-export const TOTAL_LESSONS = 25
+export const TOTAL_LESSONS = 29
 
 export interface Rank {
   name: string

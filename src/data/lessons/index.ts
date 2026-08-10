@@ -1,13 +1,19 @@
 /**
  * Lesson registry — tablespace content source of truth.
- * Track ids: t0 (The Disk Contract), t1 (Pages & Tuples), t2 (Indexing),
- * t3 (WAL & Recovery), t4 (MVCC & Isolation), t5 (Executor & Planner),
- * t6 (Vectors & HNSW).
+ * Track ids: tr (Rust Zero), t0 (The Disk Contract), t1 (Pages & Tuples),
+ * t2 (Indexing), t3 (WAL & Recovery), t4 (MVCC & Isolation),
+ * t5 (Executor & Planner), t6 (Vectors & HNSW).
  */
 
 import type { LucideIcon } from 'lucide-react'
 import { Database } from 'lucide-react'
 import type { Lesson, SimId, TrackId } from './types'
+
+// Tᴿ — Rust Zero
+import trl1 from './tr/the-rust-youll-actually-write'
+import trl2 from './tr/ownership-is-a-resource-protocol'
+import trl3 from './tr/option-result-and-match'
+import trl4 from './tr/the-forge-workflow'
 
 // T0 — The Disk Contract
 import t0l1 from './t0/everything-is-a-page'
@@ -49,6 +55,7 @@ import t6l2 from './t6/hnsw-layer-by-layer'
 import t6l3 from './t6/recall-is-a-curve'
 
 export const LESSONS_BY_TRACK: Record<TrackId, Lesson[]> = {
+  tr: [trl1, trl2, trl3, trl4],
   t0: [t0l1, t0l2, t0l3, t0l4],
   t1: [t1l1, t1l2, t1l3, t1l4],
   t2: [t2l1, t2l2, t2l3, t2l4],
@@ -58,7 +65,7 @@ export const LESSONS_BY_TRACK: Record<TrackId, Lesson[]> = {
   t6: [t6l1, t6l2, t6l3],
 }
 
-export const TRACK_IDS: TrackId[] = ['t0', 't1', 't2', 't3', 't4', 't5', 't6']
+export const TRACK_IDS: TrackId[] = ['tr', 't0', 't1', 't2', 't3', 't4', 't5', 't6']
 
 /** All lessons in curriculum order. */
 export const ALL_LESSONS: Lesson[] = TRACK_IDS.flatMap((id) => LESSONS_BY_TRACK[id])
@@ -109,6 +116,18 @@ export interface TrackExtras {
 }
 
 export const TRACK_EXTRAS: Record<TrackId, TrackExtras> = {
+  tr: {
+    pitch:
+      'The forge labs are graded in Rust. This ramp is the exact subset they use — structs, ownership, Option and Result — taught compiler-first to a Java or Python backend engineer. No async, no lifetimes, no fluff.',
+    outcomes: [
+      'Read and write the Rust the labs grade: structs, enums, impl blocks, &mut self.',
+      'Treat ownership as a resource protocol: moves, borrows, many readers XOR one writer.',
+      'Handle Option and Result with match and ? — the exact shape of every lab API.',
+      'Run the forge loop: cargo test red→green, build wasm32, drop it on the lab page.',
+    ],
+    requires: 'base of the stack · no prerequisites',
+    sideNote: '// the compiler does the tutoring here',
+  },
   t0: {
     pitch:
       'Databases are, at the bottom, files. This track is the contract those files are written against: fixed-size pages, real I/O costs, and a buffer pool that is an operating system for exactly one file.',
