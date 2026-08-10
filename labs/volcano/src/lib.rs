@@ -27,7 +27,6 @@
 //!     a user with none contributes zero (inner join).
 
 mod executor;
-mod storage;
 
 use executor::{
     Agg, Filter, HashAggregate, IndexScan, NestedLoopJoin, Operator, Pred, Project, Row, SeqScan,
