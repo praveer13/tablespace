@@ -250,42 +250,44 @@ them together." Spec it only after tablespace ships.
 
 ## RESUME POINT
 
-**EVERYTHING BUILT AND VERIFIED (2026-08-10). Deploy is the only step left.**
+**v2 EXPANSION SHIPPED (2026-08-10, live + e2e-verified in production).**
 
-- Phase 1 ✅ (09945d0): fork + rebrand + skeletons. (Byzantine backport still
-  open: `/forge/<id>` → `/labs/<id>`, `/lab/<sim>` → `/<sim>` dead links.)
-- Labs ✅ ALL SIX, each gated template-red+trap / solution-green / wasm ABI:
-  01 slotted-pages (86bce49) · 02 btree (b0c69ac) · 03 wal crash-injection
-  (6768695) · 04 mvcc interleaving scheduler (06879a5) · 05 volcano
-  (24f2c8d) · 06 hnsw distance-count metering (4dccbe8). Mutant-validated
-  (03: 5 mutants, 04: matrix, 05: 3 mutants); hnsw bands calibrated from
-  measured reference (0.972 recall @ 9.6% scan cost; RECALL_FLOOR 0.90,
-  LATENCY_MAX 800 dists, curve = computed dominance).
-- Lessons ✅ ALL 25 (T0 4e21ce8 · T1 5391865 · T2 4b56039 · T3+T4 swept into
-  6768695 · T5+T6 098730b) — every track consistent with its lab's real
-  implementation constants and with drills.ts telemetry.
-- Engine v0 ✅ (546c914): buffer-pool sim, oltp/scan/mixed seeded traces,
-  LRU vs PG usage-count clock-sweep race (honest physics: both crater on
-  pure scan; clock +0.5–2pt on mixed). T0 exercise tasks synced to real UI.
-- Crash Week ✅ 4 incident cards (phase 1), e2e-graded WRONG/CORRECT.
-- Phase 5 verify ✅ (1d7e1c2): tsc/eslint/build clean; pack-labs.py packs
-  all 6 zips (templates only, todo!()s confirmed inside); ABI sweep 6/6
-  solution-pass + 6/6 template-trap; Playwright BOTH SUITES ALL GREEN on
-  preview (47 routes clean; 6 labs accept solutions 5/5, reject templates
-  "not implemented yet", reject cross-lab "wrong lab module"; 4 drills
-  grade + completion; engine steps; links: 46/46 resolve, placement modal,
-  capstone links, /25 totals). Suites at /tmp/pw/ts-verify.mjs +
-  ts-verify-links.mjs (rig: /tmp/node v22, /tmp/pw playwright).
+Everything from v1 (below) plus, per EXPANSION.md wave 1:
+- **Tᴿ Rust Zero ramp** (7ff978c): 4 lessons (tr.l1–l4), fully wired —
+  TrackId/TRACKS first entry (slate #94A3B8, Wrench), TRACK_EXTRAS,
+  TOTAL_LESSONS=29, 'rustacean' achievement, address map 0x00/0x0E/0x1C,
+  placement recommendFor (0→tr, 1–5 keep old t1–t5), Home start link →
+  /lesson/tr.l1, badge-tr.svg, llms.txt Tᴿ section.
+- **export-lessons-md.ts fixed** (same commit): was kernelspace-flavored
+  (phase-1 miss) — now tablespace + handles lab blocks; 29 lessons-md
+  generated and shipped.
+- **Browser labs** (new block type 'lab'; framework fb9acaf/a96fc1f):
+  cost-model in t0.l2 (exemplar) · page-surgery t1.l1 + btree-surgeon
+  t2.l2 (7ff978c sweep) · wal-replay t3.l2 + visibility-court t4.l1
+  (e8b93f9) · plan-arena t5.l2 + hnsw-explorer t6.l2 (94fa184).
+  Components in src/components/browserlabs/; metadata src/data/browser-labs.ts;
+  completion recorded as sim task blab:<id>. Briefs' arithmetic caught and
+  fixed by builders: NVMe crossover direction (cost-model), 3|2 split at
+  display capacity (btree), stale-stats vs correlated-predicate (plan-arena).
+- **Verified live**: ts-verify.mjs 80 checks ALL GREEN (all routes incl.
+  /tracks/tr, 29 lessons, 6 forge flows, 4 drills, 7 browser-lab renders,
+  engine steps); ts-verify-links.mjs ALL GREEN (51 links, placement,
+  capstone links, /29 totals). Suites at /tmp/pw/ts-verify*.mjs.
+- Deploy: push to master → GH Actions → https://tablespace.play.naigap.com.
 
-**Deploy (only remaining step):** create GitHub repo tablespace under the
-authenticated gh account (same as byzantine's), add remote, push master —
-.github/workflows/deploy.yml builds + deploys to GH Pages; enable Pages
-(source: GitHub Actions) in repo settings; CNAME file already ships
-tablespace.play.naigap.com; DNS wildcard *.play.naigap.com already resolves
-to GH Pages IPs (byzantine precedent); HTTPS cert auto-provisions. After
-deploy: re-run both e2e suites against
-https://tablespace.play.naigap.com (remember: deep links return 404 STATUS
-by design — the suite filters the navigation document).
+**Wave 2 (specced in EXPANSION.md, not built):** parity lessons (extendible
+hashing, external merge sort, 2PL/OCC, latch crabbing, LRU-K), 15-721 tier
+(columnar/vectorized, optimizer search), lab 00 rust-kv forge warmup.
+
+---
+
+*v1 build record (all landed):* Phase 1 fork+rebrand (09945d0) · labs 01
+slotted-pages (86bce49), 02 btree (b0c69ac), 03 wal crash-injection
+(6768695), 04 mvcc scheduler (06879a5), 05 volcano (24f2c8d), 06 hnsw
+(4dccbe8) — every lab template-red+trap / solution-green / wasm-ABI gated,
+mutant-validated · 25 lessons T0–T6 · Engine v0 sim (546c914) · Crash Week
+4 drills · v1 deploy + live e2e ALL GREEN · byzantine dead-link backport
+(db6ee65, deployed, green).
 
 **When agents return:** spot-check each gate (template red/solution green/
 wasm ABI via `bun scripts/verify-wasm-lab.ts`), `bunx tsc -b` + lint clean,
