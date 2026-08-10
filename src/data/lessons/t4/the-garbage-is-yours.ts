@@ -6,24 +6,114 @@ const lesson: Lesson = {
   trackId: 't4',
   index: 4,
   title: 'The Garbage Is Yours',
-  minutes: 12,
+  minutes: 13,
   hook: 'Dead tuples, vacuum, freezing, and hot-page contention: the operational tax MVCC never mentions in the brochure.',
   exercise: 'quiz',
   blocks: [
     {
-      type: 'callout',
-      variant: 'info',
-      title: 'in development',
-      md: 'This lesson is being written — the outline below is the contract it will teach to.',
+      type: 'prose',
+      md: `MVCC's brochure fits on one line — readers never block writers — and the operational appendix is where the bill lives. Every UPDATE and every DELETE **leaves a body**: the old version, dead at commit, still on its page, still indexed, still read-and-skipped by every scan that passes over it. T1.L4 taught you "gone is not reclaimed" for one row on one page. This lesson is that sentence at fleet scale — where it stops being trivia and becomes the disk-usage graph that pages you at 03:00.`,
     },
     {
       type: 'prose',
-      md: `## What this lesson will cover
+      md: `## Where the bodies come from
 
-- Where dead tuples come from: every UPDATE and DELETE under MVCC leaves a body.
-- Vacuum: who can still see this version? — the oldest-open-snapshot watermark, and how one forgotten txn pins everything.
-- Bloat as a performance tax: scans wade through the dead; indexes point at corpses.
-- Hot pages and latch contention: when every writer wants the same page, the engine serializes — Crash Week's INC-3.`,
+From T4.L1's append rule, mechanically:
+
+- **UPDATE** appends a new version and stamps the old one's \`xmax\` — dead the instant you commit.
+- **DELETE** stamps \`xmax\` — dead at commit, bytes intact.
+- **ABORT** is the quiet generator: the versions it created have an \`xmin\` belonging to an aborted transaction — **born dead**, invisible to every snapshot that will ever exist.
+
+The multiplier is *churn*. A table of reference data accumulates bodies on a geological timescale; a sessions table, a jobs queue implemented as a table, a row of counters — anything UPDATE/DELETE-heavy generates dead tuples **continuously, at a rate proportional to your write rate.** Your dead-tuple count is not a property of your data; it is the derivative of your traffic.`,
+    },
+    {
+      type: 'prose',
+      md: `## Vacuum: one watermark to rule the reaper
+
+The reclaim rule from T4.L1, operationalized: a dead version's space is reclaimable **iff no open snapshot can still see it.** So the engine tracks a single number — the **oldest open snapshot's horizon** (the oldest xmin any active transaction, replication slot, or hot-standby-feedback replica might still need) — the **watermark**. Vacuum may reclaim everything dead *below* the watermark and must not touch anything above it. Its rounds: mark dead space reusable in the free-space map (T1.L4's gone-vs-reclaimed, at scale), delete the index entries that point at corpses, update the visibility map. Autovacuum triggers on dead-tuple fraction and does this continuously — "later" actually arriving, as T1.L4 put it.
+
+And one non-negotiable rider: **freeze.** Transaction ids are 32-bit; after ~2 billion transactions the counter wraps around, and your data's *past* collides with its *future* unless old tuples are frozen — stamped "visible to all, forever" — in time. Vacuum is therefore not housekeeping you can defer: it is the garbage collector *and* the wraparound life-support. A database that never vacuums does not just get slow; it eventually stops accepting writes.`,
+    },
+    {
+      type: 'callout',
+      variant: 'segfault',
+      title: 'INC-2 — the table that ate the disk',
+      md: `Crash Week's second incident, named here first: an orders table grows **40 GB → 190 GB in six weeks** while row count stays flat — and autovacuum runs every few minutes and reports *success*. The telemetry gives it away: the **oldest open snapshot is 72 hours old** — an idle-in-transaction analytics session (or a stale replication slot) holding the watermark hostage. Vacuum is running perfectly and is forbidden from reclaiming anything: **one forgotten transaction pins the entire history behind it.** The fix is one \`pg_terminate_backend\`, a catch-up vacuum, and an alarm on oldest-snapshot age, so no single session can ever pin the fleet again. \`VACUUM FULL\` would have locked the table for hours to treat the symptom.`,
+    },
+    {
+      type: 'prose',
+      md: `## Bloat: a tax on scans, indexes, and caches
+
+While the bodies wait, they are not free:
+
+- **Scans wade through them.** A seq scan reads whole pages of dead tuples, evaluates visibility on each, and returns nothing for the I/O — CPU and pages spent on corpses.
+- **Indexes point at them.** Until vacuum deletes the entries, every index carries pointers to dead ctids — bigger indexes, deeper trees, more buffer-pool frames (T0.L3) holding garbage.
+- **The file never shrinks.** Plain vacuum returns space to the table's free-space map for *reuse* — T1.L4's "gone vs reclaimed" — not to the OS. Shrinking the file means a full table rewrite under lock (\`VACUUM FULL\`), the exact blunt instrument INC-2 rejects.
+
+Add it up: 190 GB of table holding 40 GB of rows is a **4.75× multiplier on everything denominated in pages** — and from T0 you know *everything* is denominated in pages: scans, cache, backups, replication, and vacuum itself.`,
+    },
+    {
+      type: 'prose',
+      md: `## Hot pages: the convoy in the index
+
+The garbage tax is about space; the last tax is about time, and it is subtler. A monotonic key stream — \`BIGSERIAL\`, \`created_at\`, anything ascending — sends **every insert to the B+tree's rightmost leaf** (T2's ascending-insert shape). Every writer then wants the same page's **latch** — the in-memory mutex protecting a page, held for microseconds, nothing like a transaction lock — at the same instant. Under the convoy, the engine's anti-scaling shows its face: **adding writers removes throughput.** Crash Week's INC-3 telemetry is the canonical sighting: 8 writer connections → 42k inserts/s; 16 connections → 27k; CPU idle, disk idle, one wait event dominating: the rightmost leaf.
+
+The same disease has a heap-page variant: the single counter row every transaction updates serializes on its row lock and its page — one hot tuple as a global queue. The fixes are key-shape and access-shape, not hardware: hash-prefix or UUID keys to spread inserts across leaves, partition the index, batch the counter. INC-3 — *One Page to Rule Them All* — is where you will call this from graphs; consider this the teaser.`,
+    },
+    {
+      type: 'statline',
+      stats: [
+        { value: '1 forgotten txn', label: 'pins the whole past', hint: 'The oldest open snapshot is the watermark; vacuum may not reclaim anything above it — INC-2.' },
+        { value: '40 → 190 GB', label: 'six weeks, flat row count', hint: 'A pinned watermark plus heavy UPDATE traffic: bloat as a traffic derivative.' },
+        { value: '−35%', label: 'throughput for 2× writers', hint: 'INC-3: monotonic inserts convoy on the rightmost leaf’s latch. Anti-scaling by key shape.' },
+        { value: '2³²', label: 'xids before wraparound', hint: 'Vacuum must freeze old tuples before the counter wraps — the reclaim you cannot defer.' },
+      ],
+    },
+    {
+      type: 'quiz',
+      questions: [
+        {
+          q: 'When may vacuum reclaim a dead tuple’s space?',
+          options: [
+            'Immediately after the deleting transaction commits',
+            'At the next checkpoint',
+            'Once the tuple’s death is older than the oldest open snapshot’s watermark — provably invisible to every current and future snapshot',
+            'Only during VACUUM FULL',
+          ],
+          correct: [2],
+          explanation:
+            'T1.L4’s "provably safe," made a number: the oldest xmin any open snapshot (or replication slot) still needs. Below it, garbage; at or above it, someone’s world.',
+        },
+        {
+          q: 'Autovacuum runs hourly and succeeds, yet a table’s bloat climbs for days. First thing to check?',
+          options: [
+            'Whether autovacuum is enabled for the table',
+            'The oldest open snapshot — backend_xmin and replication slots: one forgotten idle-in-transaction session pins the watermark, and vacuum may reclaim nothing',
+            'Index corruption duplicating entries',
+            'The table’s fillfactor',
+          ],
+          correct: [1],
+          explanation:
+            'INC-2 exactly: vacuum running is not vacuum reclaiming. The watermark is held hostage; the fix is killing the pin — plus an alarm so it never happens silently again.',
+        },
+        {
+          q: 'On a BIGSERIAL-keyed table, doubling writer connections from 8 to 16 *cut* insert throughput by a third, with CPU and disk idle. Why?',
+          options: [
+            'The WAL flush became the bottleneck at higher concurrency',
+            'Connection pool exhaustion queued the inserts',
+            'Autovacuum interfered with the insert path',
+            'Every insert targets the same rightmost B-tree leaf — writers serialize on its latch, and more writers means a longer convoy, not more throughput',
+          ],
+          correct: [3],
+          explanation:
+            'INC-3’s signature: anti-scaling from key shape, not resource saturation. One 8 KB page was the bottleneck while the rest of the machine idled. Fix the shape — hash-prefix, UUIDs, partitioning — and the hotspot disappears by construction.',
+        },
+      ],
+    },
+    {
+      type: 'deepdive',
+      title: 'Going deeper: the reaper, instrumented',
+      md: `The clearest free walkthrough of vacuum, the visibility map, and freeze: **interdb.jp, The Internals of PostgreSQL, chapter 6 (Vacuum)** — read it next to the PG docs chapter **"Routine Vacuuming,"** which carries the autovacuum knobs and the wraparound rules in the project's own words. Then instrument your own fleet: **\`pg_stat_user_tables.n_dead_tup\`** is the body count per table, and **\`pg_stat_activity.backend_xmin\`** (plus \`pg_replication_slots\`) is how you find the session holding the watermark hostage — the two queries behind INC-2's fix. For the hot-page side, latch wait events in **\`pg_stat_activity.wait_event\`** are INC-3's smoking gun. And then Crash Week deals you both cards — INC-2 and INC-3 — with telemetry attached and a pager on the line.`,
     },
   ],
 }

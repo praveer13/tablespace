@@ -6,24 +6,127 @@ const lesson: Lesson = {
   trackId: 't3',
   index: 3,
   title: 'fsync Is a Contract',
-  minutes: 12,
+  minutes: 14,
   hook: 'Group commit, durability levels, and what your drive actually promised: the throughput numbers live in the flush policy, and some of them are lies.',
   exercise: 'read+quiz',
   blocks: [
     {
-      type: 'callout',
-      variant: 'info',
-      title: 'in development',
-      md: 'This lesson is being written — the outline below is the contract it will teach to.',
+      type: 'prose',
+      md: `\`COMMIT\` returned true. Your framework unblocked the request, your user saw the green checkmark. Where are the bytes, physically? Honest answer: the engine appended them to its WAL buffer, the kernel copied them into the **page cache** — memory the kernel will flush whenever it feels like it — and everything below that (the drive, its firmware) has made no promises whatsoever. If the box loses power now, the client was told something false.
+
+Between "the client believes" and "the oxide believes" there is exactly one syscall: **\`fsync\`**. This lesson is what it actually promises, who lies about keeping the promise, and how engines turn its latency into throughput.`,
     },
     {
       type: 'prose',
-      md: `## What this lesson will cover
+      md: `## What fsync actually does
 
-- What fsync really does (and what drive firmware sometimes pretends it did).
-- Group commit: amortize the flush across many txns — the queueing trick behind every commit-rate benchmark.
-- The durability dial: synchronous_commit and its cousins — exactly which crashes each level survives.
-- Reading a commit-latency p99: the flush is the tail.`,
+A plain \`write()\` goes app → kernel page cache and returns — durable against a *process* crash (the kernel keeps the copy), worthless against a *machine* crash. \`fsync(fd)\` is the contract crossing: the kernel writes the file's dirty pages to the device, then issues the device's own cache flush (an ATA FLUSH CACHE, an NVMe flush), and returns only when the device reports the data on stable media. After a successful fsync, the bytes survive an OS crash and a power cut — **if** every layer underneath told the truth.
+
+Two things fsync does not buy, because everyone assumes both. **Atomicity across pages**: a crash mid-write can still tear a data page — T3.L2's full_page_writes exist precisely for that. And **ordering with the rest of the world**: other files, other fds, other processes are not part of the deal. What you get is one file's bytes, on stable media, or an error.
+
+The price is the device's latency: tens of microseconds to ~1ms on NVMe, several milliseconds on spinning rust — the most honest milliseconds in your commit path.`,
+    },
+    {
+      type: 'prose',
+      md: `## The lies
+
+Storage vendors sell latency numbers, and "acknowledge the flush early" makes every benchmark better — so a drive with a **volatile write-back cache** can report "stable" the instant bytes land in its own DRAM, and a power cut then loses data the database has every reason to believe durable. The honest versions of the same trick exist — battery-backed RAID caches, SSDs with power-loss-protection capacitors make "cache" and "durable" genuinely coincide — which is why "does this drive lie about flushes?" is a procurement question, and why tools like \`pg_test_fsync\` exist.
+
+The software stack lied once, too, and it mattered. In **2018 ("fsyncgate")** it surfaced that Linux could fail a writeback, report the error *once* — possibly to a different open file description — and then mark the page clean. Postgres's strategy of "retry the fsync; it will fail again if something is wrong" got a success on the retry while the data was gone. The fix landed on both sides (the kernel reports reliably now; Postgres PANICs on fsync failure rather than gambling), but the lesson is permanent: **fsync error handling is part of the durability contract**, and "retry the syscall" was never a strategy.`,
+    },
+    {
+      type: 'callout',
+      variant: 'segfault',
+      title: `your drive's marketing department`,
+      md: `A flush acknowledged from the drive's volatile cache is a lie told in microseconds, and it is indistinguishable from honesty until the power goes out. Every layer can play: the kernel's page cache (honest — it never claims durability), the drive's DRAM cache (the classic liar when there's no power-loss protection), even the hypervisor's virtual disk. Certification is the only answer: pull the plug under load and count what survived. If your durability story has never survived a plug-pull test, it is a hope, not a story.`,
+    },
+    {
+      type: 'prose',
+      md: `## Group commit: the queueing trick
+
+One flush costs the same whether it covers one commit or five hundred — the syscall plus the device round-trip is the whole price. So real engines **batch committers behind a single flusher**: each committing transaction appends its records, registers the LSN it needs durable, and sleeps; one process (Postgres's WAL writer, or the first waiter to win the flush race) fsyncs once and wakes everyone whose LSN the flush covered.
+
+Throughput becomes **batch size ÷ flush latency**: at ~50µs a flush there are ~20,000 flushes per second to amortize across, and under load each one covers a crowd. Every "commits per second" benchmark you have ever read is secretly a measurement of this batching — crank the concurrency and the same drive "commits" an order of magnitude more transactions per second, because the flush stopped being per-transaction. The price shows up in latency, not throughput: your commit now waits for *its* flush opportunity. Which brings us to the tail.`,
+    },
+    {
+      type: 'statline',
+      stats: [
+        { value: '1 flush → N commits', label: 'group commit', hint: 'The flusher wakes every committer whose LSN it covered. Throughput = batch ÷ flush latency.' },
+        { value: '~50 µs', label: 'an NVMe-scale fsync', hint: 'Order of magnitude for a modern drive at sane queue depth — T0.L2 prices the device, not the syscall.' },
+        { value: '≤ 600 ms', label: 'loss window at synchronous_commit=off', hint: 'Up to 3 × wal_writer_delay (default 200 ms) of acknowledged commits may vanish on a crash. Never corruption — just loss.' },
+        { value: '0', label: 'commits lost at =on, honest hardware', hint: 'Local flush before ack: process crash, OS crash, and power loss all survivable. The "honest hardware" is doing real work.' },
+      ],
+    },
+    {
+      type: 'prose',
+      md: `## The durability dial
+
+Between "flush before ack" and "never flush, hope" there is a documented dial, and you should know exactly which crashes each notch survives. Postgres's \`synchronous_commit\`:
+
+| level | commit waits until the WAL is… | survives DB crash | survives OS / power loss |
+|---|---|---|---|
+| \`on\` (default) | flushed locally — and to the synchronous standby, if one is configured | yes | yes |
+| \`local\` | flushed locally; standby not consulted | yes | yes |
+| \`remote_write\` | written to the standby's OS — not flushed there | yes | primary + standby simultaneous loss can lose it |
+| \`remote_apply\` | replayed on the standby | yes | yes — and the ack waits for a replica's apply, so it's the slowest |
+| \`off\` | nothing — a background flush lands within ~3 × \`wal_writer_delay\` | **no** | **no** |
+
+Read the \`off\` row carefully, because it is the one teams reach for under load: it trades away recent **commits**, never **consistency** — the WAL ordering rule still holds, so after a crash the database comes up coherent, just missing some transactions it had acknowledged. MySQL's cousin dial is \`innodb_flush_log_at_trx_commit\`: 1 = flush at commit (the \`on\` row), 2 = write to the OS at commit but flush once a second (survives a DB crash, not an OS one), 0 = both writes and flushes batched per second (the \`off\` row). Same physics, different labels.`,
+    },
+    {
+      type: 'prose',
+      md: `## The flush is the tail
+
+Now you can read a commit-latency p99 like an engineer. The **mean** commit latency under group commit looks gentle — most commits hitch a ride on a flush that was happening anyway. The **tail** is the flush itself: a commit that arrives just after one fsync began waits a full cycle, and when the device hiccups — flash garbage collection and write amplification from T0.L2, a slow sector remap, a noisy neighbor on the SAN — **every waiting commit eats the hiccup at once.** Group commit correlates your tail: it is the correct design, and it means p99 is a storage-latency graph wearing a database costume.
+
+So when commit p99 spikes fleet-wide in the same second and your queries are unchanged, look at the storage layer before the query layer. And when someone proposes fixing it with \`synchronous_commit = off\`, you now know exactly which row of the table they are asking you to move to.`,
+    },
+    {
+      type: 'quiz',
+      questions: [
+        {
+          q: 'fsync returned success. Power died. Data the client was promised is gone — and the engine followed the WAL rule perfectly. Who broke the contract?',
+          options: [
+            'The kernel — the page cache is not durable',
+            'The drive: its volatile write-back cache acknowledged the flush before the bytes reached stable media — a lie that only a plug-pull test can catch',
+            'The WAL rule — it does not cover power loss',
+            'Nobody — fsync never promised power-loss durability',
+          ],
+          correct: [1],
+          explanation:
+            'fsync’s promise explicitly includes power loss, and the engine called it correctly. A drive that acks from volatile cache breaks the contract invisibly — which is why battery-backed caches and power-loss protection are the honest version of the same speed.',
+        },
+        {
+          q: 'Why does group commit multiply commit throughput?',
+          options: [
+            'It compresses the WAL before flushing',
+            'It skips fsync for small transactions',
+            'One flush’s cost is fixed regardless of how many commits it covers — batching committers behind a single flusher makes throughput ≈ batch size ÷ flush latency',
+            'Commits are written to a faster region of the disk',
+          ],
+          correct: [2],
+          explanation:
+            'The syscall plus device round-trip is the whole price of a flush; amortize it across every queued committer. This is the trick hiding inside every commits/sec benchmark number.',
+        },
+        {
+          q: 'A transaction must survive a full power loss of the database server (honest hardware, no replicas). Which configurations deliver that? (select all)',
+          options: [
+            'synchronous_commit = on',
+            'synchronous_commit = off',
+            'innodb_flush_log_at_trx_commit = 1',
+            'innodb_flush_log_at_trx_commit = 2',
+          ],
+          correct: [0, 2],
+          multi: true,
+          explanation:
+            '=on and =1 flush to stable media before ack. =off waits up to ~600 ms for a background flush, and =2 writes to the OS at commit but flushes later — both survive a database-process crash, neither survives the machine.',
+        },
+      ],
+    },
+    {
+      type: 'deepdive',
+      title: 'Going deeper: the contract, the incident, the measurements',
+      md: `The knob, documented honestly: **PostgreSQL docs, "Reliability and the Write-Ahead Log"** — the \`synchronous_commit\` matrix and the \`off\`-level loss window, in the project's own words. The incident every storage engineer should know: **"PostgreSQL's fsync() surprise," LWN.net (2018)** — how a kernel error-reporting quirk invalidated twenty years of retry logic, and what both sides changed. Measure your own stack before trusting it: **\`pg_test_fsync\`** ships with Postgres and reports real flush costs per method; pair it with an actual plug-pull. And for how far the lying can go: **Pillai et al., "All File Systems Are Not Created Equal: On the Complexity of Crafting Crash-Consistent Applications" (OSDI 2014)** — the paper that crash-tested real applications against real filesystem behaviors and found the bodies.`,
     },
   ],
 }

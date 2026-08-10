@@ -6,24 +6,127 @@ const lesson: Lesson = {
   trackId: 't6',
   index: 1,
   title: 'Why Exact Neighbors Die',
-  minutes: 13,
+  minutes: 14,
   hook: 'The curse of dimensionality: distance concentration, why every exact index degrades to a scan, and what "approximate" buys back.',
   exercise: 'quiz',
   blocks: [
     {
-      type: 'callout',
-      variant: 'info',
-      title: 'in development',
-      md: 'This lesson is being written — the outline below is the contract it will teach to.',
+      type: 'prose',
+      md: `A new row type walks into your engine. It is a **vector**: 768 to 3072 IEEE floats, the residue of a model that read a paragraph (or an image, or a song) and compressed what it *meant* into a point in space. Similar meanings land near each other — that is the entire trick, and the entire product category it spawned.
+
+To the storage engine, two things follow. First, this is the widest row you have ever met: 1536 dimensions × 4 bytes = **6KB** — three-quarters of your 8192-byte page, so a lab-01 page holds about one; 3072 dimensions is 12KB, over the limit entirely, off into T1.L3's overflow machinery. Second, the workload collapses to exactly **one question**: "what is near this point?" Not equality, not ranges — proximity. Everything you have built so far answers the first two kinds of question beautifully. This lesson is why none of it answers the third.`,
+    },
+    {
+      type: 'statline',
+      stats: [
+        { value: '1536×4B', label: 'a 6KB row', hint: 'Roughly one embedding per 8192-byte page. A 3072-dim vector is 12KB — over the page limit, into overflow storage (T1.L3).' },
+        { value: '5M rows', label: '≈ 31GB of vectors', hint: 'The capstone’s corpus, before any index exists. Brute force reads all of it, every query.' },
+        { value: '1', label: 'question, ever asked', hint: 'SELECT … ORDER BY vec <=> $1 LIMIT k. Proximity is the only predicate.' },
+      ],
     },
     {
       type: 'prose',
-      md: `## What this lesson will cover
+      md: `## Distance concentration
 
-- What an embedding is to a storage engine: 768–3072 floats that only ever answer one question — "what's near this?"
-- Distance concentration: in high dimensions, the farthest point stops being much farther than the nearest.
-- Why kd-trees and friends degrade to scans beyond ~20 dimensions — exactness is the first casualty.
-- The approximate bargain: trade a little recall for orders of latency — the trade the whole track prices.`,
+Here is the geometry that kills exact search. Sample points uniformly in a d-dimensional cube and measure pairwise distances. Each coordinate contributes a small independent difference; the squared distance is a *sum of d such terms*, and the central limit theorem does what it always does: **the sum concentrates**. The mean distance grows like √d — but the standard deviation stays roughly constant, pinned near √(7/120) ≈ 0.24 regardless of d.
+
+Watch what that does as d climbs. In 2 dimensions: mean ≈ 0.52, std ≈ 0.25 — the spread is half the mean, near and far are visibly different, "nearest" means something. In 1536 dimensions: mean = √(1536/6) = **16.0**, std ≈ **0.24** — every pairwise distance in the dataset lands within a couple percent of 16.0. The ratio of farthest to nearest collapses toward 1. **The farthest point stops being much farther than the nearest.** Beyer et al. proved the formal version in 1999: for a wide class of distributions, (max − min)/min → 0 as dimension grows. Your intuition that some points are *obviously* closer than others is a low-dimensional fossil — the same kind T0 warned you about.`,
+    },
+    {
+      type: 'code',
+      filename: 'the concentration, pictured — 10k uniform points, unit hypercube',
+      lang: 'text',
+      code: `pairwise distance histograms (normalized)
+
+ d = 2                                  d = 1536
+ 0.1 ┤ ▏                                15.5 ┤
+ 0.2 ┤ ▎                                15.6 ┤ ▏
+ 0.3 ┤ ██                               15.7 ┤ ▎
+ 0.4 ┤ ███▍                              15.8 ┤ ███
+ 0.5 ┤ █████▏                            15.9 ┤ █████▏
+ 0.6 ┤ ████▍                             16.0 ┤ ████████▏ ← everyone
+ 0.7 ┤ ███▎                              16.1 ┤ █████
+ 0.8 ┤ ██▏                               16.2 ┤ ██▏
+ 0.9 ┤ █▏                                16.3 ┤ ▏
+     mean 0.52 · std 0.25                     mean 16.0 · std 0.24
+     spread ≈ ½ the mean                      spread ≈ 1.5% of the mean`,
+      chips: ['the CLT does this', 'std ≈ √(7/120), forever'],
+    },
+    {
+      type: 'prose',
+      md: `## Why the exact indexes fold
+
+Every exact nearest-neighbor index shares one architecture: partition space, keep bounds on each region, and at query time **prune** any region that provably cannot contain a point closer than your current k-th best. Concentration breaks the *provably*:
+
+- **kd-tree**: splits space one dimension at a time into nested boxes. Exact search descends to the query's cell, then backtracks into every sibling whose bounding box comes within the current best distance. In high dimensions the best distance is ≈ the distance to *everything*, so almost no box is prunable. Measurements put the crossover near **~20 dimensions**: past it, the kd-tree visits most of the dataset — while paying node-chasing overhead and random I/O (T0) that a plain scan never does. Worse than the scan it replaced.
+- **R-tree**: groups by overlapping bounding rectangles. In high-d the rectangles inflate toward the whole space, overlap approaches totality, and every path must be explored. Same death, different costume.
+- **Your T2 B+tree**: imposes a total order on *one* dimension. Proximity in 1536 dimensions is not an order — there is no sort key under which neighbors become contiguous. Space-filling curves try to fake one; they smear neighborhoods and degrade all the same.
+
+Weber, Schek and Blott measured the punchline in 1998 with the VA-file: past ~10 dimensions, a *sequential scan with compression* beat every exact index they tested. Exactness is the first casualty of dimension. So stop requiring it.`,
+    },
+    {
+      type: 'prose',
+      md: `## The approximate bargain
+
+The way out is to renegotiate the contract. Exact kNN promises: *the* k nearest, guaranteed. **Approximate** nearest neighbor promises: k points that are almost certainly the nearest — and prices the difference. The unit of honesty is **recall@k**:
+
+\`recall@k = |your k results ∩ the true k| / k\`
+
+where "true" is defined by brute force — an exact scan, the thing your T5 executor already runs. The bargain on offer: give up a few points of recall, get back **orders of magnitude of latency**. 95–99% recall at ~1% of the scan's cost is the normal trade, not the heroic one.
+
+And the bargain is intellectually clean, not merely expedient: **the embedding was already approximate.** Its distances are a lossy compression of human meaning; whether the true 10th neighbor edges out the 11th is noise next to everything the encoder threw away. You were never buying exactness — you were buying useful neighbors, fast. Exact search spends 100× the compute guaranteeing a distinction your data cannot cash. This trade — a little recall for orders of latency — is the trade the whole track prices: T6.L2 builds the structure that offers it, and T6.L3 teaches you to draw the curve honestly.`,
+    },
+    {
+      type: 'callout',
+      variant: 'info',
+      title: 'the loophole that saves ANN',
+      md: `Concentration is a theorem about *uniform random* points. Real embeddings are anything but: they lie on low-dimensional structure — clusters, manifolds, the shape of actual meaning — embedded in the high-dimensional space. Distances *within* that structure keep their contrast, and that contrast is what approximate methods exploit. So when recall collapses on your data, the order of suspicion is: metric (cosine vs L2 vs inner product are different geometries), then data, and only then the index.`,
+    },
+    {
+      type: 'quiz',
+      questions: [
+        {
+          q: 'Why does a 3072-dim float32 embedding hurt a plain heap table before any index is involved?',
+          options: [
+            'Float comparison is CPU-bound at that width',
+            'At 12KB the row exceeds the 8192-byte page — it overflows into side storage (T1.L3), so every row read pays an indirection and scans wade through pointers',
+            'Pages can hold it, but the slot array charges 6B per dimension',
+            'Heap pages cannot store IEEE floats',
+          ],
+          correct: [1],
+          explanation:
+            '3072 × 4B = 12KB > 8192B: the row leaves the main page for overflow storage, and scans pay the indirection per row. Even 1536 dims (6KB) means ~one row per page — a 5M-row table is ~31GB, and brute force reads all of it, every query.',
+        },
+        {
+          q: 'In 1536 dimensions, pairwise distances between uniform random points cluster at 16.0 ± 0.24. Consequence for exact nearest-neighbor search?',
+          options: [
+            'Distances become cheaper to compute in bulk',
+            'Floating-point rounding makes exact ties more likely',
+            'Nothing — exact search is unaffected by distributions',
+            'Pruning loses its power: no region can be ruled out when the best distance found is within noise of the distance to everything, so exact indexes devolve into full data walks',
+          ],
+          correct: [3],
+          explanation:
+            'Every exact index is a pruning machine, and concentration starves it — the gap between "current best" and "everything else" is the only thing pruning ever spends. Beyer et al. formalized the collapse of contrast in 1999: the farthest point stops being much farther than the nearest.',
+        },
+        {
+          q: 'On 1000-dimensional data, a kd-tree loses to a plain sequential scan. Why?',
+          options: [
+            'The scan uses sequential I/O while the tree pays random fetches and node bookkeeping to visit almost all of the data anyway — past ~20 dims, almost no cell is prunable',
+            'kd-trees only support up to 256 dimensions',
+            'The tree must be rebuilt for every query',
+            'Scans parallelize; tree descents are single-threaded',
+          ],
+          correct: [0],
+          explanation:
+            'Exactness forces the tree to visit every cell not *provably* excluded; in high dimensions that is nearly all cells. So it does the scan’s work minus the scan’s one virtue — T0’s sequential axis — plus overhead. The VA-file result (Weber et al., 1998) measured exactly this crossover.',
+        },
+      ],
+    },
+    {
+      type: 'deepdive',
+      title: 'going deeper: the curse, documented',
+      md: `The theorem behind the lesson: **Beyer, Goldstein, Ramakrishnan, Shaft, "When Is 'Nearest Neighbor' Meaningful?" (ICDT 1999)** — the concentration-of-contrast result, with the conditions under which nearest neighbor loses meaning. Its companion: **Aggarwal, Hinneburg, Keim, "On the Surprising Behavior of Distance Metrics in High Dimensional Space" (ICDT 2001)** — including what happens to Lp norms as p grows, which will unsettle you. The measurement: **Weber, Schek, Blott, "A Quantitative Analysis and Performance Study for Similarity-Search Methods in High-Dimensional Spaces" (VLDB 1998)** — the VA-file paper, in which the humble sequential scan, compressed, beats every exact index past ~10 dimensions; read it as the bridge from T0's cost model to this track. For the modern course version: **CMU 15-721's vector-search lectures**. T6.L2 picks up the bargain this lesson just struck.`,
     },
   ],
 }

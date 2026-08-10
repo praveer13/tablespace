@@ -354,7 +354,10 @@ pub fn check_checksum_corruption() -> Check {
     let klen = u16::from_le_bytes(w.disk.bytes[rec_off + 9..rec_off + 11].try_into().unwrap()) as usize;
     let flip_at = rec_off + REC_HEADER + klen; // the value's first byte
     w.crash();
-    w.disk.bytes[flip_at] ^= 0xFF;
+    // XOR 0x01: ASCII stays ASCII, so the record still PARSES — only the
+    // checksum can convict it. (A UTF-8-breaking flip would be caught by the
+    // parser, not the crc, and this check grades the crc.)
+    w.disk.bytes[flip_at] ^= 0x01;
     w.recover();
     model.crash_at(rec_off); // record 4 and everything after it are forfeit
     if let Some(d) = state_diff(&w, &model.live, &universe) {

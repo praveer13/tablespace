@@ -6,24 +6,132 @@ const lesson: Lesson = {
   trackId: 't4',
   index: 3,
   title: 'Conflicts and Serializable Snapshots',
-  minutes: 12,
+  minutes: 14,
   hook: 'Write-write conflicts, optimistic vs pessimistic concurrency, and how SSI gets serializability without a lock manager.',
   exercise: 'read',
   blocks: [
     {
-      type: 'callout',
-      variant: 'info',
-      title: 'in development',
-      md: 'This lesson is being written — the outline below is the contract it will teach to.',
+      type: 'prose',
+      md: `T4.L2 ended with advice: when the invariant crosses rows, pay for serializable. This lesson is the machinery that makes "serializable" a runtime property instead of a hope — and the bill, because the bill is why you don't just set it everywhere. Three ideas, in order: the one conflict every engine must resolve no matter what, the two philosophies for resolving conflicts in general, and the algorithm that got Postgres to serializable without a lock manager.`,
     },
     {
       type: 'prose',
-      md: `## What this lesson will cover
+      md: `## The write-write conflict: one row, one future
 
-- Write-write conflict: two txns, one row — first-writer-wins, and why the second must fail or wait.
-- Pessimistic (locks, deadlock detection) vs optimistic (validate at commit): the contention profile decides.
-- SSI in one idea: track dangerous read→write dependency structures, abort only when the cycle is real.
-- What "serializable" buys: your app reasons about txns one at a time — the most expensive sanity there is.`,
+Two transactions, one row, both writing. MVCC's append rule (T4.L1) would happily let both create new versions — siblings, each invisible to the other's world — and then the row has two futures and the loser's write silently never happened: **the lost update, by construction.**
+
+So every MVCC engine draws the same line: **first-writer-wins.** The second transaction to write a row that already carries an uncommitted newer version must **fail or wait** — wait for the first to commit or abort; if it committed and your snapshot predates it, you cannot proceed, because your world is stale *for that row*, so you abort with a serialization error and retry. (Read committed takes the cheaper escape: re-read the newest committed version and re-apply the statement on top of it.) Lab 04's ww_conflict check is the minimal honest version: the second writer is simply rejected.
+
+Notice the shape of it: readers never queue, snapshots never queue — the one queue MVCC keeps is **per row, writers only.**`,
+    },
+    {
+      type: 'prose',
+      md: `## Pessimistic vs optimistic: the contention profile decides
+
+Zoom out from one row to all conflicts, and there are exactly two philosophies:
+
+- **Pessimistic — lock first.** Shared/exclusive locks, two-phase locking (acquire in a growing phase, release in a shrinking one — the theorem behind serializability), plus deadlock detection: build the waits-for graph, find a cycle, shoot a victim. You pay for locks and detection even when nobody ever conflicts.
+- **Optimistic — validate at commit.** Run free against versions; at commit, check whether anything you relied on changed; abort on conflict. You pay nothing when conflicts are rare — and you pay *the whole transaction again* every time they are not.
+
+The contention profile picks the winner. Conflicts rare: optimistic runs lock-free and laps the lock manager. Conflicts common: optimistic melts into **abort-and-retry storms** — every loser re-runs and re-conflicts — while pessimistic just queues politely and finishes. Whichever side your engine sits on, the knob you own is the **retry**: under anything optimistic-flavored, "please retry" is a normal return value, so bound it, back off, and never let retry handling become a retry amplifier.`,
+    },
+    {
+      type: 'callout',
+      variant: 'analogy',
+      md: `You have already made this choice in application code, probably both ways. **Mutex = pessimistic**: convoys form under contention, but everyone finishes. **CAS / ETag / If-Match retry loop = optimistic**: free under low contention, live-locks under high. Same trade, same decision procedure — measure the conflict rate, then pick. The database just hides its version of the loop inside the words "isolation level" and hands you the 40001.`,
+    },
+    {
+      type: 'prose',
+      md: `## SSI in one idea
+
+Serializable Snapshot Isolation (Cahill, Röhm & Fekete 2008; Ports & Grittner brought it to Postgres 9.1 in 2012) starts from a scandalous premise: keep snapshot isolation exactly as-is — readers never block, no read locks at all — and *watch* for the one shape every serialization failure contains.
+
+The shape is the **rw-antidependency**: transaction A read a version that transaction B's write later superseded — A ran "before" B without seeing B's work, so in any equivalent serial order, A must precede B. One antidependency is harmless; T4.L2's read-committed world is full of them. The theorem: **every cycle in the serialization graph contains a dangerous structure — two rw-antidependencies in a row, T1 →rw T2 →rw T3.** So SSI tracks reads (as predicate-level SIREAD locks — bookkeeping, not blocking) and aborts a transaction when a dangerous structure closes into a cycle.
+
+Write skew dies right there. A read B's row and B read A's, then each wrote its own: A →rw B **and** B →rw A — a two-node cycle of antidependencies — and the second committer gets SQLSTATE 40001. The price of the design is **false positives**: the dangerous structure is necessary for a cycle but not sufficient, so a few innocent transactions get shot to keep serializable lock-free. Precision traded for speed — the entire algorithm in one sentence.`,
+    },
+    {
+      type: 'diagram',
+      caption: 'fig 1 — the dangerous structure, and the cycle it hunts',
+      height: 46,
+      nodes: [
+        { id: 't1', x: 4, y: 6, w: 20, h: 9, label: 'T1', sub: 'reads v(q)', color: '#5CA8FF' },
+        { id: 't2', x: 40, y: 6, w: 20, h: 9, label: 'T2', sub: 'writes q · reads v(p)', color: '#FBBF24' },
+        { id: 't3', x: 76, y: 6, w: 20, h: 9, label: 'T3', sub: 'writes p', color: '#FB7185' },
+        { id: 'a', x: 22, y: 30, w: 22, h: 10, label: 'txn A', sub: "reads B's row, writes own", color: '#3EF2A4' },
+        { id: 'b', x: 58, y: 30, w: 22, h: 10, label: 'txn B', sub: "reads A's row, writes own", color: '#3EF2A4' },
+      ],
+      edges: [
+        { from: 't1', to: 't2', label: 'rw' },
+        { from: 't2', to: 't3', label: 'rw' },
+        { from: 'a', to: 'b', label: 'rw' },
+        { from: 'b', to: 'a', label: 'rw' },
+      ],
+      steps: [
+        { caption: 'An rw-antidependency: T1 read a version of q that T2’s write superseded — T1 must precede T2 in any serial equivalent. One of these is harmless.', active: ['t1', 't2'], edges: ['t1->t2'] },
+        { caption: 'The dangerous structure: two antidependencies in a row, T1 →rw T2 →rw T3. Every serialization cycle contains one — so SSI watches for this pivot and nothing else.', active: ['t1', 't2', 't3'], edges: ['t1->t2', 't2->t3'] },
+        { caption: 'Write skew is the minimal cycle: A read what B overwrote and B read what A overwrote — A →rw B and B →rw A. The structure closes; the second committer is aborted. Snapshot isolation never saw a thing: no row was written twice.', active: ['a', 'b'], edges: ['a->b', 'b->a'] },
+      ],
+    },
+    {
+      type: 'prose',
+      md: `## What serializable buys — and costs
+
+What it buys is the most expensive sanity there is: **your application reasons about transactions one at a time.** Every invariant — row-local, cross-row, cross-table — holds without a single explicit lock, because the engine guarantees the outcome equals *some* serial order. For money movement, inventory, scheduling — anything with a cross-row invariant — that is the correct default.
+
+The bill has three line items:
+
+1. **Serialization failures are normal.** 40001 is part of the API surface — *every* transaction, read-only ones included, can come back with it, so every transaction needs a bounded retry loop. Serializable without retry handling is an outage you scheduled yourself.
+2. **Tracking is not free.** SIREAD bookkeeping grows with read footprint and transaction lifetime — long transactions are big targets with long conflict windows.
+3. **Aborts scale with contention.** The same hot rows that create latch convoys (T4.L4) create serialization aborts; the conflict window is your transaction's whole lifetime, so keep serializable transactions short.
+
+That is the honest trade: correctness for free at read time, paid at commit time, in a currency of retries.`,
+    },
+    {
+      type: 'quiz',
+      questions: [
+        {
+          q: 'Under MVCC, why must the second writer to a row fail or wait rather than write its own version?',
+          options: [
+            'The row’s page latch is already taken',
+            'The WAL cannot order two writers to one page',
+            'Sibling versions would give the row two futures and silently orphan one transaction’s write — the lost update — so first-writer-wins, and the loser retries or aborts',
+            'Two versions would exceed the page’s free space',
+          ],
+          correct: [2],
+          explanation:
+            'Lab 04’s ww_conflict is the minimal form. A row has one future; MVCC’s whole trick is versioning *reads*, and it does not extend to concurrent writes of the same row.',
+        },
+        {
+          q: 'Your workload has frequent real conflicts on a small set of hot rows. Pessimistic or optimistic?',
+          options: [
+            'Optimistic — no lock overhead',
+            'Pessimistic — under real contention, optimistic aborts re-run whole transactions and re-conflict (a retry storm), while locks queue the writers and everyone finishes',
+            'Optimistic, but with more retries',
+            'Neither — conflicts are impossible under MVCC',
+          ],
+          correct: [1],
+          explanation:
+            'The contention profile decides: rare conflicts favor optimistic (pay nothing), common conflicts favor pessimistic (pay queueing, not re-execution). Under high contention, "retry forever" is a liveness failure with extra steps.',
+        },
+        {
+          q: 'SSI aborts a transaction when…',
+          options: [
+            'any two transactions read the same row',
+            'a dangerous structure — two rw-antidependencies in a row — closes into a real cycle, as in write skew’s A →rw B, B →rw A',
+            'the SIREAD lock table fills up',
+            'two transactions write different rows in the same table',
+          ],
+          correct: [1],
+          explanation:
+            'Read-write overlap alone is fine — snapshot isolation runs on it. Only the pivot closing into a cycle gets shot, with a few false positives accepted as the price of staying lock-free.',
+        },
+      ],
+    },
+    {
+      type: 'deepdive',
+      title: 'Going deeper: the papers, and the source that shipped them',
+      md: `The algorithm as Postgres runs it: **Ports & Grittner, "Serializable Snapshot Isolation in PostgreSQL" (VLDB 2012)** — the engineering paper: what SIREAD locks cost, where the false positives come from, and how it held up in production. The theory it implements: **Cahill, Röhm & Fekete, "Serializable Isolation for Snapshot Databases" (SIGMOD 2008)** — the dangerous-structure theorem, proved. The running code: **src/backend/storage/lmgr/predicate.c** in the Postgres tree, with the docs chapter **"Transaction Isolation"** as the user-facing contract. For the pessimistic side's gospel: **Gray & Reuter, *Transaction Processing: Concepts and Techniques*** — two-phase locking and deadlock detection as the classics taught them. And the practical summary, worth taping next to the first one: at SERIALIZABLE, **retry is part of the API.**`,
     },
   ],
 }

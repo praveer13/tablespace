@@ -6,24 +6,128 @@ const lesson: Lesson = {
   trackId: 't5',
   index: 2,
   title: 'Three Ways to Join',
-  minutes: 13,
+  minutes: 15,
   hook: 'Nested-loop, hash, merge: each join\'s cost in I/Os and memory, and the cardinalities that decide between them.',
   exercise: 'quiz',
   blocks: [
     {
-      type: 'callout',
-      variant: 'info',
-      title: 'in development',
-      md: 'This lesson is being written — the outline below is the contract it will teach to.',
+      type: 'prose',
+      md: `T5.L1 gave every operator the same interface; this lesson gives three of them a price. The join is where that pricing matters most: it is the operator that makes a relational database relational — the only one that combines two streams — and it is where plans go to die, because the gap between the right join and the wrong one is not a percentage. It is orders of magnitude.
+
+There are exactly three classical strategies, and each is a different bet about your data. Set up the running example: \`customers\` — 100,000 rows in 5,000 pages — joined to \`orders\` — 1,000,000 rows in 50,000 pages (about 20 rows per 8192-byte page, lab-01 arithmetic) — on \`orders.customer_id = customers.id\`.`,
     },
     {
       type: 'prose',
-      md: `## What this lesson will cover
+      md: `## Nested-loop: the double loop
 
-- Nested-loop join: cheap per outer row, fatal per outer million — unless an index saves it.
-- Hash join: build once, probe streaming; the memory cliff and the graceful spill.
-- Merge join: two sorted inputs, one walk — and why sorting first sometimes still wins.
-- Reading the join choice out of EXPLAIN and pricing it yourself.`,
+For each row of the outer input, scan the inner input; emit pairs that match. The cost is not subtle:
+
+\`pages(outer) + rows(outer) × pages(inner)\`
+
+Price the example with customers as the outer: 5,000 + 100,000 × 50,000 ≈ **5 billion page fetches**. Even if every one is a buffer-pool hit at T0.L3's ~100ns, that is ~500 seconds of pure inner-loop scanning. Cheap per outer row — one full pass of the inner — and fatal per outer *hundred thousand*, let alone million. The planner reaches for this join only when the outer side is tiny: a handful of rows, where "a handful × one pass" beats every alternative's setup cost.
+
+But nested-loop has a second life. If the inner side has an index on the join key, the inner scan per outer row stops being 50,000 pages and becomes one tree descent — and T2 taught you a million-row tree is ~3 levels, so ~3 page fetches per probe. **Indexed nested-loop**: 100,000 probes × 3 pages = 300,000 fetches, mostly random, priced in the planner's currency as 300,000 × \`random_page_cost\`. That is the plan every OLTP lookup runs — \`WHERE id = $1\` joined to its parent is exactly this. Hold the number.`,
+    },
+    {
+      type: 'prose',
+      md: `## Hash: build once, probe streaming
+
+The hash join bets on equality: if the join condition is \`=\`, a hash table does in one pass what the loop does in a hundred thousand. Phase one — **build**: read the *smaller* input once, hash every row on the join key into an in-memory table. Phase two — **probe**: stream the larger input one tuple at a time, hash the key, look it up, emit matches. Cost when the build side fits in memory: read both inputs once — 5,000 + 50,000 = **55,000 sequential pages** — plus CPU. Against 5 billion, it is not a contest.
+
+The cliff is the build table's home: it must fit in \`work_mem\`. Our build side is 5,000 pages = 40MB against a 4MB default — it does not fit. The graceful answer is the **Grace hash join**: hash *both* inputs into numbered buckets on the join key, spill the buckets to disk (sequential writes — T0's axis saving you again), then load one bucket pair at a time and join it. Matching rows always land in the same bucket number, so correctness survives the partitioning. Cost: each side is read, written, and re-read — ≈ 3 × 55,000 = **165,000 pages**. Notice the failure shape: degradation is *linear* in spill size, not a cliff — the true cliff is when the planner *thought* the build would fit (T5.L3) and discovers mid-execution that it doesn't, or when skewed keys pour the whole table into one bucket.`,
+    },
+    {
+      type: 'prose',
+      md: `## Merge: two sorted inputs, one walk
+
+If both inputs are sorted on the join key, the join is the merge step of merge sort: two cursors walk downward, advancing whichever is behind, emitting on equality — one pass, O(R + S), no hash table, no per-row lookup. The catch is the precondition, and its price is a sort: sort customers (small), sort orders (50,000 pages — external merge sort, sequential runs again), then walk.
+
+So when does merge join win? Two cases. First, **the inputs arrive sorted for free**: a B+tree index scan emits rows in key order (your lab-02 tree's \`ordered_scans\` check, now working for the executor), so if the planner's path to both sides is an ordered index scan, the sort vanishes and merge join is nearly pure streaming. Second, **someone downstream wants sorted output anyway** — an ORDER BY or a grouping on the join key — and one sort funds two jobs; the hash join's output is in no order at all, so it would pay the sort *on top of* its own work. Sorting first sometimes wins because sorting is the cheapest bulk operation a database knows: sequential in, sequential out.`,
+    },
+    {
+      type: 'callout',
+      variant: 'isomorphism',
+      md: `Each join is an algorithm you already own, run at a scale where its edge case is the main case. Hash join is the \`HashMap\` group-by you write in application code — until the day the map stops fitting in memory, which in a database is a designed-for event, not a crash. Merge join is \`comm\` on two sorted files. And nested-loop is the O(n×m) double loop you were taught never to write — which is correct, except when n is 10, where it beats everything because the alternatives pay their setup costs before they emit a row. The planner's entire job at this node is estimating n. T5.L3 is about how badly that goes.`,
+    },
+    {
+      type: 'prose',
+      md: `## Reading the choice out of EXPLAIN
+
+Postgres tells you which bet it made, right at the top of the plan. Read the output bottom-up for the data flow, top-down for the pull cascade (T5.L1): the Hash node is the build side's materialization point; the join pulls its probe side one tuple at a time.`,
+    },
+    {
+      type: 'code',
+      filename: 'EXPLAIN ANALYZE — the planner confessing',
+      lang: 'text',
+      code: `Hash Join  (cost=7000.00..85000.00 rows=1000000 width=24)
+             (actual time=41.2..1188.4 rows=1000000 loops=1)
+  Hash Cond: (orders.customer_id = customers.id)
+  ->  Seq Scan on orders
+        (cost=0.00..60000.00 rows=1000000) (actual rows=1000000)
+  ->  Hash  (cost=6000.00..6000.00 rows=100000) (actual rows=100000)
+        Buckets: 131072  Batches: 1  Memory Usage: 4300kB
+        ->  Seq Scan on customers
+              (cost=0.00..6000.00 rows=100000) (actual rows=100000)`,
+      chips: ['read ↑ for data flow', 'rows= is a guess'],
+    },
+    {
+      type: 'prose',
+      md: `Two columns, two epistemologies. \`rows=\` is the planner's **estimate** — T5.L3's subject — and \`actual rows\` (present because ANALYZE really ran the query) is the truth. When the two diverge by 10× at some node, the plan above that node is probably the wrong bet: this plan says "hash, one batch, in memory" because the planner believed the build side was ~100,000 rows ≈ 4.3MB of hash table. Had the truth been 40MB, you would see \`Batches: 8\` — the Grace spill, executed live and confessed in the output. The join algorithm printed at the top *is* the cardinality story the planner told itself.`,
+    },
+    {
+      type: 'statline',
+      stats: [
+        { value: '5×10⁹', label: 'fetches, naive nested-loop', hint: 'pages(outer) + rows(outer) × pages(inner) = 5,000 + 100,000 × 50,000. Fatal at an outer hundred thousand, let alone a million.' },
+        { value: '300k', label: 'fetches, indexed nested-loop', hint: 'One ~3-level tree descent per outer row, priced ×random_page_cost. The OLTP plan.' },
+        { value: '55k', label: 'pages, hash in memory', hint: 'Read both sides once, sequentially. The catch: the build side must fit work_mem.' },
+        { value: '3×', label: 'hash join, spilled', hint: 'Grace hash: partition both into buckets, spill sequentially, join bucket-by-bucket. Linear degradation, not a cliff.' },
+      ],
+    },
+    {
+      type: 'quiz',
+      questions: [
+        {
+          q: 'R has 10,000 rows in 500 pages; S has 2,000,000 rows in 100,000 pages. No index on the join key. A nested-loop join with R as the outer costs roughly how many page fetches?',
+          options: [
+            '100,500 — one pass of each',
+            '1,000,000,500 — 500 + 10,000 × 100,000',
+            '10,100,000 — rows(R) × rows(S) ÷ 100',
+            '2,000,000 — one inner page fetch per inner row',
+          ],
+          correct: [1],
+          explanation:
+            'rows(outer) × pages(inner) dominates everything: each of the 10,000 outer rows triggers a full 100,000-page inner scan. A billion fetches at ~100ns each — all cache hits! — is still ~100 seconds, which is why the planner only nests a loop when the outer side is tiny or indexed.',
+        },
+        {
+          q: 'In a hash join, which input should the build phase hash into memory?',
+          options: [
+            'The larger input — more rows amortize the hash computation',
+            'The smaller input — the build side is what must fit in work_mem; the probe side streams either way',
+            'Whichever input has the wider rows — hashing wide rows once is cheaper',
+            'The input with the index — the index accelerates the build',
+          ],
+          correct: [1],
+          explanation:
+            'Build cost and spill risk both scale with the build side; the probe side is a pure stream whose size only costs one sequential pass. Build small, probe big — and when the planner guesses wrong about which side is smaller, T5.L3 happens.',
+        },
+        {
+          q: 'A merge join sometimes wins even when the planner must pay to sort both inputs first. When?',
+          options: [
+            'When the hash function is known to collide on the join key',
+            'When the query (or a parent operator) needs sorted output on the join key anyway — one sort funds the join and the ordering; hash would pay the sort on top of its own passes',
+            'When the smaller input fits in work_mem',
+            'Never — merge join only wins when both inputs arrive pre-sorted',
+          ],
+          correct: [1],
+          explanation:
+            'Sort output is reusable: merge join emits rows in join-key order, so an ORDER BY or grouping above gets its precondition for free, while hash output would be re-sorted afterward. Sorting is also the cheapest bulk operation in the engine — sequential in, sequential out (T0) — which is why paying for it can beat paying for anything else.',
+        },
+      ],
+    },
+    {
+      type: 'deepdive',
+      title: 'going deeper: the toolbox and the source',
+      md: `The definitive survey: **Graefe, "Query Evaluation Techniques for Large Databases" (ACM Computing Surveys, 1993)** — nested-loop variants, Grace and hybrid hash, external merge sort, with the real cost formulas; this lesson is its first chapters. The lecture version: **CMU 15-445, the joins week** — same algorithms, live-coded. For what production Postgres actually runs: the **EXPLAIN docs**, then \`nodeHashjoin.c\`, \`nodeMergejoin.c\`, \`nodeNestloop.c\` in the source — refreshingly readable, and the Grace partitioning in \`nodeHash.c\` is the spill from this lesson, bucket numbers and all. And the origin of costing these choices at all: **Selinger et al., "Access Path Selection in a Relational Database Management System" (SIGMOD, 1979)** — System R's optimizer, the first to put a price sheet in front of a planner. T5.L3 is about what happens when the prices are right and the row counts are not.`,
     },
   ],
 }

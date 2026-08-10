@@ -10,6 +10,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hnsw"
+version = "0.1.0"
+dependencies = [
+ "kslab",
+]
+
+[[package]]
 name = "kslab"
 version = "0.1.0"
 
@@ -22,6 +29,13 @@ dependencies = [
 
 [[package]]
 name = "slotted-pages"
+version = "0.1.0"
+dependencies = [
+ "kslab",
+]
+
+[[package]]
+name = "volcano"
 version = "0.1.0"
 dependencies = [
  "kslab",
