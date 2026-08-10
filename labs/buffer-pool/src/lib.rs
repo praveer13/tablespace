@@ -23,6 +23,7 @@
 //!     never twice for the same bytes.
 
 mod pool;
+mod public_trace;
 
 use kslab::{Check, Report};
 use pool::{page_image, BufferPool, FetchError, NUM_PAGES, PAGE_BYTES};
@@ -813,10 +814,47 @@ pub fn self_checks() -> Vec<Check> {
     ]
 }
 
+/* ----------------------- leaderboard metrics -------------------------- */
+
+/// Frames the public leaderboard scores at — small enough that the replacer
+/// is the whole game on a 10k-page trace.
+pub const LEADERBOARD_FRAMES: usize = 32;
+
+/// The leaderboard metric: run the PUBLIC_TRACE (11,988 refs over 10k pages,
+/// TPC-C-shaped — see src/public_trace.rs) through the student's pool at
+/// LEADERBOARD_FRAMES frames. Every ref is a pure read: fetch, then a clean
+/// unpin — nothing is ever held pinned, so a correct pool never refuses.
+/// Returns (refs, hits, reads, writes, evictions). Writes are always 0 —
+/// no ref ever reports a write; the counters still go on the board.
+pub fn leaderboard_metrics() -> (u64, u64, u64, u64, u64) {
+    let mut p = BufferPool::new(LEADERBOARD_FRAMES);
+    for &page in public_trace::PUBLIC_TRACE.iter() {
+        if p.fetch(page).is_ok() {
+            p.unpin(page, false);
+        }
+    }
+    (
+        public_trace::PUBLIC_TRACE.len() as u64,
+        p.hits(),
+        p.reads(),
+        p.writes(),
+        p.evictions(),
+    )
+}
+
 /* ------------------------------ wasm ABI ---------------------------- */
 
 #[no_mangle]
 pub extern "C" fn ks_run(_in_ptr: u32, _in_len: u32) -> u64 {
-    let report = Report { lab: "buffer-pool", version: 1, checks: self_checks() };
-    kslab::emit(&report)
+    let report = Report { lab: "buffer-pool", version: 2, checks: self_checks() };
+    let mut json = kslab::report_json(&report);
+    // Additive extension: v2 appends `metrics` — runners written for v1
+    // ignore unknown fields. hit_bps = hits * 10000 / refs (integer).
+    let (refs, hits, reads, writes, evictions) = leaderboard_metrics();
+    let hit_bps = if refs > 0 { hits * 10000 / refs } else { 0 };
+    json.pop(); // the closing '}' of the report
+    json.push_str(&format!(
+        ",\"metrics\":{{\"public_trace\":{{\"frames\":{LEADERBOARD_FRAMES},\"refs\":{refs},\"hits\":{hits},\"hit_bps\":{hit_bps},\"reads\":{reads},\"writes\":{writes},\"evictions\":{evictions}}}}}}}"
+    ));
+    kslab::emit_str(&json)
 }

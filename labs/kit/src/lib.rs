@@ -81,7 +81,16 @@ pub struct Report {
 /// Serialize the report into the staging buffer and return its
 /// (ptr << 32) | len for the host.
 pub fn emit(report: &Report) -> u64 {
-    emit_str_inner(|out| write_report(out, report))
+    emit_str_inner(|out| out.extend_from_slice(report_json(report).as_bytes()))
+}
+
+/// The report as a JSON string — the exact bytes `emit` stages. Labs that
+/// extend the report additively (e.g. buffer-pool's leaderboard `metrics`)
+/// build on this string instead of re-implementing the writer.
+pub fn report_json(report: &Report) -> String {
+    let mut out = Vec::new();
+    write_report(&mut out, report);
+    String::from_utf8(out).expect("write_report emits valid UTF-8")
 }
 
 /// Stage an arbitrary string response (runtime/invoke ABI) and return its

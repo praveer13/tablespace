@@ -1,0 +1,64 @@
+name: Leaderboard Validate
+
+# The buffer-pool leaderboard, half 1 of 2 — see SUBMISSIONS.md.
+# Runs on the PR's code with a READ-ONLY token (fork-safe): it executes the
+# submitted wasm in the runner's import-less sandbox and emits DATA (a JSON
+# artifact). Nothing here writes to the repo, comments, or labels — a red
+# check IS the review signal. leaderboard-publish.yml (on master, triggered
+# by this workflow's success) is the only writer.
+
+on:
+  pull_request:
+    paths: ['submissions/**']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the diff against the base branch names the submitted files
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Run the leaderboard runner on the PR's submissions
+        env:
+          BASE: ${{ github.base_ref }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          mkdir -p result
+          : > result/entries.jsonl
+          found=0
+          while read -r wasm; do
+            [ -n "$wasm" ] || continue
+            found=1
+            json="${wasm%.wasm}.json"
+            if [ ! -f "$json" ]; then
+              echo "::error file=$wasm::missing sidecar $json — a submission is submissions/<user>.wasm + submissions/<user>.json"
+              exit 1
+            fi
+            echo "== validating $wasm + $json"
+            bun scripts/leaderboard-run.ts "$wasm" "$json" | tee -a result/entries.jsonl
+          done < <(git diff --name-only --diff-filter=AM "origin/$BASE...HEAD" -- 'submissions/*.wasm')
+          if [ "$found" -eq 0 ]; then
+            echo "::error::this PR touches submissions/ but adds no submissions/*.wasm"
+            exit 1
+          fi
+          # Wrap the runner lines with the PR number from the workflow
+          # context (never from PR-controlled files).
+          bun -e '
+            const lines = (await Bun.file("result/entries.jsonl").text()).trim().split("\n").map((l) => JSON.parse(l))
+            await Bun.write("result/result.json", JSON.stringify({ pr: Number(process.env.PR), entries: lines }, null, 2) + "\n")
+          '
+          cat result/result.json
+
+      - name: Upload the result artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: leaderboard-result-${{ github.event.pull_request.number }}
+          path: result/result.json
+          retention-days: 30

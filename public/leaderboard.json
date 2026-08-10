@@ -1,0 +1,19 @@
+{
+  "trace": "bp-public-trace",
+  "frames": 32,
+  "refs": 11988,
+  "updated": "2026-08-10",
+  "entries": [
+    {
+      "user": "reference-lruk",
+      "hit_bps": 2751,
+      "hits": 3298,
+      "reads": 8690,
+      "writes": 0,
+      "evictions": 8658,
+      "sha256": "8bfae3d533026933c459902214bf4ff49a6b69f0d6860d5db21fca70187da1fb",
+      "pr": null,
+      "date": "2026-08-10"
+    }
+  ]
+}

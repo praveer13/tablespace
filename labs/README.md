@@ -67,6 +67,15 @@ Labs build on each other like real life: lab 05's executor runs over the
 page layout from 01 and the tree from 02 — the templates say what to bring
 forward.
 
+## The leaderboard (lab 07)
+
+Finished the buffer pool? The public leaderboard scores your replacer's hit
+rate on a 11,988-ref TPC-C-shaped trace at 32 frames, CI-verified by
+re-running your wasm. Rules and submission flow:
+[SUBMISSIONS.md](https://github.com/praveer13/tablespace/blob/master/SUBMISSIONS.md).
+The reference LRU-K holds the bar at 2751 bps — bring ARC, TinyLFU, or 2Q
+and take it.
+
 ## How grading works (honesty box)
 
 The checks live in `src/lib.rs` of each lab — read them, that's allowed.

@@ -1,0 +1,92 @@
+name: Leaderboard Publish
+
+# The buffer-pool leaderboard, half 2 of 2 — see SUBMISSIONS.md.
+#
+# WHY THE SPLIT EXISTS: the validate workflow runs on the PR's code with a
+# read-only token; its only output is DATA (a JSON artifact). THIS workflow
+# runs on MASTER's files — it checks out master, runs master's merge script,
+# and never checks out or executes PR code. The PR's runner output is data;
+# master's publisher never executes PR code. That is what makes a fork PR
+# unable to turn its submission into arbitrary code running with a write
+# token: the only thing that crosses the boundary is a JSON file.
+
+on:
+  workflow_run:
+    workflows: ['Leaderboard Validate']
+    types: [completed]
+
+permissions:
+  contents: write # the leaderboard.json commit back to master
+  pull-requests: read # the submissions/-only guard below
+  actions: read # download the validate run's artifact
+
+concurrency:
+  group: leaderboard-publish
+  cancel-in-progress: false # serialize merges — leaderboard.json is a single file
+
+jobs:
+  publish:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      # No ref: workflow_run always checks out the DEFAULT branch (master) —
+      # never the PR. Every script executed below is master's own file.
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Download the validate run's result artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifact
+
+      - name: Guard — fresh artifact, submissions/ only
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          result_file=$(ls artifact/leaderboard-result-*/result.json | head -1)
+          echo "result_file=$result_file" >> "$GITHUB_ENV"
+          pr_dir=$(dirname "$result_file")
+          pr="${pr_dir##*-}"
+          gh pr view "$pr" --repo "$REPO" --json headRefOid,files > /tmp/pr.json
+          bun -e '
+            import { appendFileSync } from "node:fs"
+            const pr = JSON.parse(await Bun.file("/tmp/pr.json").text())
+            const bad = pr.files.map((f) => f.path).filter((p) => !p.startsWith("submissions/"))
+            if (bad.length > 0) {
+              console.error(`FAIL: PR touches files outside submissions/: ${bad.join(", ")} — refusing to publish`)
+              process.exit(1)
+            }
+            const fresh = pr.headRefOid === process.env.HEAD_SHA
+            appendFileSync(process.env.GITHUB_OUTPUT!, `fresh=${fresh ? 1 : 0}\n`)
+            if (!fresh) console.log("stale artifact (PR has a newer head) — the newer validate run will publish; skipping")
+            else console.log("guard ok: artifact head matches the PR, files all under submissions/")
+          '
+
+      - name: Merge entries into public/leaderboard.json
+        if: steps.guard.outputs.fresh == '1'
+        id: merge
+        run: |
+          set -euo pipefail
+          merged=$(bun scripts/leaderboard-merge.ts "$result_file" public/leaderboard.json)
+          echo "merged=$merged" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push the board
+        if: steps.guard.outputs.fresh == '1'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/leaderboard.json
+          if git diff --cached --quiet; then
+            echo "board unchanged — nothing to commit"
+            exit 0
+          fi
+          git commit -m "[skip ci] leaderboard: ${{ steps.merge.outputs.merged }}"
+          git push
