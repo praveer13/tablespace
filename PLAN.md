@@ -250,45 +250,36 @@ them together." Spec it only after tablespace ships.
 
 ## RESUME POINT
 
-**WAVE 2 SHIPPED (2026-08-10, live + e2e-verified in production).** The
-15-445-parity + 15-721-tier wave per EXPANSION.md:
+**WAVE 3 SHIPPED (2026-08-10, live + e2e-verified).** The forge-lab wave —
+every tier now has a graded build. **10 forge labs total.**
 
-- **T7 "The Analytical Turn"** (new track, #A3E635/Cpu): columnar layout,
-  vectorized execution, optimizer search (System R DP → Cascades/optd).
-- **Parity lessons**: t0.l5 LRU-K (five-minute rule → 15-445 P1), t2.l5
-  extendible/linear hashing, t2.l6 latch crabbing (Lehman-Yao), t4.l5
-  2PL/OCC, t5.l4 external sorting. High-key-fence forward-refs in t2.l1/l2
-  deepdives retargeted to t2.l6.
-- **lab 00 rust-kv** (e397bcf): forge warmup — template ships 5 deliberate
-  compile errors (each its own function body because rustc masks
-  later-phase errors; verbatim rustc output in the agent report), then
-  cas + scan_prefix. NO template wasm by design ("fixing it IS the lab");
-  e2e skips its template flow via noTpl flag.
-- Counts: **37 lessons, 9 tracks (tr, t0–t7), 7 forge labs**. TOTAL_LESSONS
-  =37; track counts t0=5, t2=6, t4=5, t5=4; address map 0x00/0x12/0x24;
-  Curriculum "Nine tracks, thirty-seven lessons"; capstone connector
-  "requires T0–T7"; superuser achievement requires all 7 labs; badge-t7.svg.
-- lessons-md + llms.txt regenerated (37 lessons, script-driven).
-- e2e: both suites ALL GREEN live (61 internal links; /37/ totals; t7
-  routes; rust-kv solution flow).
+- lab 07 buffer-pool (34473a3): LRU-K, O'Neil history-list discipline,
+  +∞ for <K-touch pages, pins outrank everything; plain-LRU mutant 0/12
+  on scan_resistance.
+- lab 08 optimizer (c3e130c): System R DP; integer fixed-point costs (u64
+  milliunits, u128 saturating intermediates, order-independent rows_of);
+  interesting orders graded; bands brute-force-calibrated (optimum unique
+  among 792 valid plans; beats_naive factor 1.20× = 60% of measured min).
+- lab 09 columnar (e4d57ce): dict/RLE/Raw blocks of 2048, zone maps
+  (may_match canonical), vectorized filter+sum with blocks_read counting;
+  compression band measured (2.67× reference); storm ceilings computed,
+  not guessed (3,751 vs 7,500 blocks vs row-store).
+- README table rows 07–09; superuser achievement spans all 10 labs; all
+  10 zips packed; e2e extended (both suites ALL GREEN live incl. the 3
+  new solution+template flows).
 
-**Wave 3 candidates (not specced yet):** 15-445 has nothing left we lack
-for its core arc; possible next: buffer-pool forge lab (LRU-K replacer as
-lab 07), query-optimizer forge lab (join-order DP graded on cost), columnar
-forge lab (vectorized scan over compressed columns), CI-verified
-leaderboard (kernelspace NEXT.md pattern), trace-mode expansion in The
-Engine (real TPC-C traces). Decide with the user.
+**Course state: 37 lessons · 9 tracks · 10 forge labs · 7 browser labs ·
+4 Crash Week drills · Engine sim.**
+
+**Wave 4 (final, remaining):** Engine real-trace mode (TPC-C shape),
+CI-verified leaderboard (zero-server pattern from kernelspace NEXT.md),
+bundle code-split (the >500kB warning), final polish. Then the course is
+complete.
 
 ---
 
-*v2 record:* Tᴿ Rust Zero ramp (7ff978c) + 7 browser labs (framework
-fb9acaf; cost-model exemplar; wal/visibility e8b93f9; plan/hnsw 94fa184;
-page/btree swept into 7ff978c) + export-lessons-md fix.
-
-*v1 record:* fork+rebrand (09945d0) · 6 forge labs gated+mutant-validated
-(86bce49, b0c69ac, 6768695, 06879a5, 24f2c8d, 4dccbe8) · 25 lessons ·
-Engine v0 (546c914) · Crash Week · deploy + live e2e green · byzantine
-backport (db6ee65).
+*v1–v2 records above: fork+labs 00–06+25 lessons+Engine+Crash Week (v1);
+Tᴿ ramp + 7 browser labs (v2a); T7 + parity lessons + lab 00 (v2b).*
 
 **When agents return:** spot-check each gate (template red/solution green/
 wasm ABI via `bun scripts/verify-wasm-lab.ts`), `bunx tsc -b` + lint clean,
