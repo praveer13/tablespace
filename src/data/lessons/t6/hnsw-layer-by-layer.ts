@@ -123,6 +123,10 @@ Lab 06 (hnsw) hands you \`src/hnsw.rs\` and a seeded corpus, and grades you the 
 - **curve** — the capstone's soul: your (recall, latency) operating point must dominate a naive build (small m, tiny ef) on the same corpus. One point on one curve, measured against truth — the entire vector-database business case in miniature.`,
     },
     {
+      type: 'lab',
+      lab: 'hnsw-explorer',
+    },
+    {
       type: 'quiz',
       questions: [
         {

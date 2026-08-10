@@ -84,6 +84,10 @@ Postgres tells you which bet it made, right at the top of the plan. Read the out
       ],
     },
     {
+      type: 'lab',
+      lab: 'plan-arena',
+    },
+    {
       type: 'quiz',
       questions: [
         {
