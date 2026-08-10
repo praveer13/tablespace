@@ -2,7 +2,7 @@
  * Lesson registry — tablespace content source of truth.
  * Track ids: tr (Rust Zero), t0 (The Disk Contract), t1 (Pages & Tuples),
  * t2 (Indexing), t3 (WAL & Recovery), t4 (MVCC & Isolation),
- * t5 (Executor & Planner), t6 (Vectors & HNSW).
+ * t5 (Executor & Planner), t6 (Vectors & HNSW), t7 (The Analytical Turn).
  */
 
 import type { LucideIcon } from 'lucide-react'
@@ -20,6 +20,7 @@ import t0l1 from './t0/everything-is-a-page'
 import t0l2 from './t0/the-cost-model-of-reality'
 import t0l3 from './t0/an-operating-system-for-one-file'
 import t0l4 from './t0/eviction-is-a-bet'
+import t0l5 from './t0/lru-k'
 
 // T1 — Pages & Tuples
 import t1l1 from './t1/anatomy-of-a-page'
@@ -32,6 +33,8 @@ import t2l1 from './t2/the-btree-contract'
 import t2l2 from './t2/splits-merges-staying-balanced'
 import t2l3 from './t2/the-write-optimized-counterpoint'
 import t2l4 from './t2/choosing-the-index-family'
+import t2l5 from './t2/extendible-hashing'
+import t2l6 from './t2/latch-crabbing'
 
 // T3 — WAL & Recovery
 import t3l1 from './t3/write-it-down-first'
@@ -43,29 +46,37 @@ import t4l1 from './t4/many-worlds-one-truth-each'
 import t4l2 from './t4/the-anomaly-zoo'
 import t4l3 from './t4/conflicts-and-serializable-snapshots'
 import t4l4 from './t4/the-garbage-is-yours'
+import t4l5 from './t4/two-phase-locking-and-occ'
 
 // T5 — The Executor & the Planner
 import t5l1 from './t5/pull-not-push'
 import t5l2 from './t5/three-ways-to-join'
 import t5l3 from './t5/the-planner-guesses'
+import t5l4 from './t5/external-sorting'
 
 // T6 — Vectors & HNSW
 import t6l1 from './t6/why-exact-neighbors-die'
 import t6l2 from './t6/hnsw-layer-by-layer'
 import t6l3 from './t6/recall-is-a-curve'
 
+// T7 — The Analytical Turn
+import t7l1 from './t7/columnar-the-other-layout'
+import t7l2 from './t7/vectorized-execution'
+import t7l3 from './t7/how-the-optimizer-searches'
+
 export const LESSONS_BY_TRACK: Record<TrackId, Lesson[]> = {
   tr: [trl1, trl2, trl3, trl4],
-  t0: [t0l1, t0l2, t0l3, t0l4],
+  t0: [t0l1, t0l2, t0l3, t0l4, t0l5],
   t1: [t1l1, t1l2, t1l3, t1l4],
-  t2: [t2l1, t2l2, t2l3, t2l4],
+  t2: [t2l1, t2l2, t2l3, t2l4, t2l5, t2l6],
   t3: [t3l1, t3l2, t3l3],
-  t4: [t4l1, t4l2, t4l3, t4l4],
-  t5: [t5l1, t5l2, t5l3],
+  t4: [t4l1, t4l2, t4l3, t4l4, t4l5],
+  t5: [t5l1, t5l2, t5l3, t5l4],
   t6: [t6l1, t6l2, t6l3],
+  t7: [t7l1, t7l2, t7l3],
 }
 
-export const TRACK_IDS: TrackId[] = ['tr', 't0', 't1', 't2', 't3', 't4', 't5', 't6']
+export const TRACK_IDS: TrackId[] = ['tr', 't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7']
 
 /** All lessons in curriculum order. */
 export const ALL_LESSONS: Lesson[] = TRACK_IDS.flatMap((id) => LESSONS_BY_TRACK[id])
@@ -211,6 +222,18 @@ export const TRACK_EXTRAS: Record<TrackId, TrackExtras> = {
     ],
     requires: 'requires T5 · query execution',
     sideNote: '// lab 6: your recall/latency curve, measured honestly',
+  },
+  t7: {
+    pitch:
+      'Everything so far served the point transaction. This track turns the engine around: analytics wants columns, batches, and SIMD — and the planner search that decides between all of it.',
+    outcomes: [
+      'Explain DSM vs NSM and why analytics pays the row-store tax per column read.',
+      'Walk vectorized execution: batches, tight loops, SIMD, morsel parallelism.',
+      'Trace System R dynamic programming over join orders, interesting orders included.',
+      'Say what Cascades changed and where optd/DataFusion sit in 2026.',
+    ],
+    requires: 'requires T5 · execution & planning',
+    sideNote: '// the 15-721 layer, browser-native',
   },
 }
 

@@ -52,6 +52,7 @@ A `todo!()` left in your code makes the module trap — the site shows
 
 | # | lab | track | you build |
 |---|-----|-------|-----------|
+| 00 | `rust-kv/` | Tᴿ | the warmup: five compile errors that each teach one Rust move, then compare-and-set + a prefix scan — the template doesn't compile yet; fixing it IS the lab |
 | 01 | `slotted-pages/` | T1 | the page: slot array, records, byte-exact free-space accounting |
 | 02 | `btree/` | T2 | the index: separators, splits, merges, balance under adversarial orders |
 | 03 | `wal/` | T3 | durability: log-first ordering, checksums, idempotent crash recovery |

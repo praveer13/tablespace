@@ -37,6 +37,7 @@ def crate_files(lab: str, edit_file: str, tests_file: str) -> list[str]:
 
 
 PACKAGES = [
+    ("rust-kv.zip", "rust-kv", SHARED + crate_files("rust-kv", "kv.rs", "kv_tests.rs")),
     ("slotted-pages.zip", "slotted-pages", SHARED + crate_files("slotted-pages", "page.rs", "page_tests.rs")),
     ("btree.zip", "btree", SHARED + crate_files("btree", "tree.rs", "tree_tests.rs")),
     ("wal.zip", "wal", SHARED + crate_files("wal", "wal.rs", "wal_tests.rs")),

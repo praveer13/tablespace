@@ -1,0 +1,158 @@
+import type { Lesson } from '../types'
+
+const lesson: Lesson = {
+  id: 't4.l5',
+  slug: 'two-phase-locking-and-occ',
+  trackId: 't4',
+  index: 5,
+  title: 'Two-Phase Locking and OCC',
+  minutes: 14,
+  hook: 'Before MVCC there was the lock manager: grow/shrink, deadlocks, wait-die vs wound-wait — and the optimistic heresy that validates at commit.',
+  exercise: 'quiz',
+  blocks: [
+    {
+      type: 'prose',
+      md: `T4.L3 drew the map in one line each: pessimistic — lock first; optimistic — validate at commit. This lesson opens both machines, because the map is not the territory, and the territory is older than MVCC. For the first two decades of relational databases, serializability *was* the lock manager, and the lock manager never actually left: it is the heart of InnoDB, it is the row locks under every Postgres UPDATE, and it is what \`SELECT ... FOR UPDATE\` reaches for when your ORM gets nervous.
+
+What MVCC abolished was locking *for readers*. It did not abolish the theory — and the theory repays study, because every optimistic design since, SSI included, is a deliberate bet against it.`,
+    },
+    {
+      type: 'prose',
+      md: `## Two phases, one theorem
+
+The inventory is two lock modes: **shared** (read) and **exclusive** (write) — many readers XOR one writer, the same discipline as Rust's borrows and lab 04's version checks. The discipline that makes it serializable is the shape of the acquisition curve:
+
+1. **Growing phase** — acquire locks; release none.
+2. **Shrinking phase** — release locks; acquire none.
+
+That is the whole rule: once you release a lock, you may never take another. Why it works comes down to one moment: the **lock point** — the instant a transaction holds every lock it will ever hold. Sort all transactions by lock point and every 2PL schedule turns out to be conflict-equivalent to that serial order. The growing-then-shrinking shape is what guarantees the lock point exists: release early and you open a gap in your schedule that another transaction's conflicting write can interleave through.
+
+Watch the gap kill someone. T1 moves money from A to B: lock A, deduct, **release A**, lock B, credit, release B. T2 audits the bank — reads A and B — and lands in the gap: A already debited, B not yet credited. The money is gone in T2's world, and *no serial order explains T2's answer* (before T1, B is uncredited; after it, A is debited; T2 saw half). Hold both locks until both updates are done — 2PL — and the gap closes. Real engines go further: **strict** 2PL holds all exclusive locks to commit, which also buys recoverability for free — nobody can read your uncommitted write, so aborts never cascade.`,
+    },
+    {
+      type: 'prose',
+      md: `## Deadlocks: find the cycle, or make cycles impossible
+
+Locks queue, queues cycle, and a cycle is a **deadlock**: T1 holds A and wants B, T2 holds B and wants A, and both wait forever. There are three industrial answers.
+
+**Detection.** Maintain the **waits-for graph** — an edge per "this transaction waits on that one" — and look for cycles. Nobody polls it continuously; Postgres checks a waiter only after it has already waited \`deadlock_timeout\` (default **1s**), and if the walk finds a cycle it shoots a victim: \`ERROR: deadlock detected\`, one transaction aborts, the rest proceed. The 1s is a confession: detection is cheap, but the deadlock is discovered only after the wait already hurt.
+
+**Timeouts.** The blunt instrument: wait longer than X, abort. Set X low and you shoot innocent long queries; set it high and real deadlocks stall pipelines. Every engineer who has tuned \`lock_timeout\` has rediscovered why this is a backstop, not a strategy.
+
+**Prevention by age.** Timestamp every transaction at birth and make waits flow in exactly one age direction — then cycles are impossible by construction, because a cycle needs an edge that goes backwards in time:
+
+- **wait-die** — an old transaction may **wait** for a young one; a young transaction requesting an old one's lock **dies** on the spot and restarts *with its original timestamp* (so it ages into seniority instead of starving forever). Non-preemptive: holders are never disturbed.
+- **wound-wait** — an old transaction requesting a young one's lock **wounds** it: the holder aborts, the elder proceeds. A young requester simply **waits**. Preemptive: the old never queue behind the young.
+
+Both abort transactions that detection would merely have waited out — that is the price of never building the graph. Same guarantee, opposite manners: wait-die sacrifices the young on arrival, wound-wait sacrifices them on demand.`,
+    },
+    {
+      type: 'diagram',
+      caption: 'fig 1 — a waits-for cycle, found and shot',
+      height: 56,
+      nodes: [
+        { id: 't1', x: 37, y: 3, w: 26, h: 9, label: 'T1', sub: 'holds A', color: '#A78BFA' },
+        { id: 't2', x: 6, y: 38, w: 26, h: 9, label: 'T2', sub: 'holds B', color: '#A78BFA' },
+        { id: 't3', x: 68, y: 38, w: 26, h: 9, label: 'T3', sub: 'holds C', color: '#A78BFA' },
+        { id: 'clock', x: 35, y: 22, w: 30, h: 9, label: 'deadlock detector', sub: 'walks after 1s of waiting', color: '#FBBF24' },
+      ],
+      edges: [
+        { from: 't1', to: 't2', label: 'wants B' },
+        { from: 't2', to: 't3', label: 'wants C' },
+        { from: 't3', to: 't1', label: 'wants A' },
+      ],
+      steps: [
+        { caption: 'Each transaction holds one lock and requests the next: T1 wants B, so an edge T1 → T2. No problem yet — waits are normal; a lock manager that never queues is a lock manager nobody uses.', active: ['t1', 't2'], edges: ['t1->t2'] },
+        { caption: 'T2 wants C: edge T2 → T3. A chain, not a cycle — if T3 commits, the whole thing unwinds in order.', active: ['t2', 't3'], edges: ['t1->t2', 't2->t3'] },
+        { caption: 'T3 wants A: edge T3 → T1 closes the loop. Now every edge is someone waiting on someone who is waiting — no commit order can ever fire. This is the deadlock.', active: ['t1', 't2', 't3'], edges: ['t1->t2', 't2->t3', 't3->t1'] },
+        { caption: 'T1 has been waiting past deadlock_timeout, so Postgres walks the graph from T1, finds the cycle, and picks a victim — say T3. T3 aborts, its locks release, and the edges die with it. The log says deadlock detected; the retry is your problem.', active: ['clock', 't3'], edges: ['t1->t2'] },
+      ],
+    },
+    {
+      type: 'prose',
+      md: `## The ledger: what the lock manager costs, and buys
+
+The cost side, line by line. **Readers queue**: a shared lock is still a lock, so a long report blocks the writer and a writer blocks the report — the exact casualty T4.L1's brochure claims to have abolished. **The lock table is memory**: every row lock is an entry in a shared hash table, and engines that run out either error or escalate row locks to page and table locks — correct, and suddenly much coarser than you designed. **Detection runs in the foreground** of somebody's bad day. And **phantoms need more than row locks**: locking the rows that exist cannot stop an INSERT of a row that doesn't, so serious 2PL engines lock *ranges* — key-range or next-key locks, index structure pressed into service as a predicate.
+
+The buy side is why nothing here is obsolete. **One version of each row**: no version chains, no vacuum, no dead-tuple curve, no watermark a forgotten transaction can hold hostage — T4.L4's entire operational appendix does not exist. **Serializability is the floor, not the top shelf**: there is no snapshot to write-skew under (T4.L2's subtlest anomaly is an MVCC-native disease). The pessimistic engine's pathology is blocking; the MVCC engine's pathology is garbage. You are choosing which 03:00 page you prefer.`,
+    },
+    {
+      type: 'prose',
+      md: `## OCC: the optimistic heresy
+
+Kung and Robinson's 1981 counter-proposal: skip the lock manager entirely and let each transaction run against a **private workspace**, recording its **read set** and **write set** as it goes. Three phases:
+
+1. **Read** — execute freely; writes accumulate privately, invisible to everyone.
+2. **Validate** — at commit, ask: could anything I relied on have changed under me?
+3. **Write** — if validation passed, publish the write set, atomically. If not: abort, discard, retry.
+
+The standard validation is **backward-oriented**: check your read set against the write sets of every transaction that committed while you were in your read phase. Disjoint — then nobody you read from moved, and you can be serialized *after* all of them: commit. Overlap — you read a value that no longer exists; your whole computation is fiction: abort. (Forward-oriented validation, checking against transactions still running, exists; backward is the classic teaching and the simpler invariant.)
+
+And now the bet, priced. OCC pays nothing when conflicts are rare: no lock table, no queues, no detection — pure speed for read-mostly workloads. Under contention it pays **per transaction**, where 2PL pays per *operation*: the loser doesn't wait, it re-runs everything, and enough losers re-running at once is T4.L3's abort-and-retry storm. The contention profile decides, and it decides absolutely. The postscript T4.L3 already hinted at: SSI is this bet wearing an MVCC body — run free against snapshots, detect the dangerous structure at commit, abort the loser. The heresy won. It just took thirty years and snapshots to make validation cheap.`,
+    },
+    {
+      type: 'callout',
+      variant: 'analogy',
+      title: 'svn lock vs git merge',
+      md: `Two-phase locking is the old centralized version control: \`svn lock\` the file, edit, unlock — nobody else touches it while you work, and woe to the teammate who needs it tonight. OCC is git: everyone edits a private copy, and the question is deferred to publish time, where the merge either applies clean or you redo your work on top of the new truth. Same workloads, same answer as everywhere else in this lesson: how much conflict does your team actually have? Pay a little coordination always, or pay a full redo rarely. Distributed systems re-fights this duel as two-phase commit vs eventual consistency; it is the same ledger with network delays stapled on.`,
+    },
+    {
+      type: 'statline',
+      stats: [
+        { value: '2 phases', label: 'grow, then shrink', hint: 'Acquire-only, then release-only. The shape guarantees a lock point, and the lock point order is the serial order.' },
+        { value: '1 s', label: 'deadlock_timeout', hint: 'Postgres default: a waiter this old triggers a waits-for graph walk. Detection runs only after the wait already hurt.' },
+        { value: '1 direction', label: 'age flow', hint: 'wait-die: waits only flow old→young. wound-wait: young→old. One direction means no cycles, by construction.' },
+        { value: '3', label: 'OCC phases', hint: 'Read in a private workspace, validate your read set against committed write sets, then publish. Kung & Robinson, 1981.' },
+      ],
+    },
+    {
+      type: 'quiz',
+      questions: [
+        {
+          q: 'T1 transfers money from A to B, releasing the lock on A *before* locking B. T2 reads A and B in the gap and sees A debited but B not credited. What exactly went wrong?',
+          options: [
+            'T2 should have used SELECT FOR UPDATE — readers must always lock',
+            'Releasing early destroyed the lock point: T2\'s answer is explainable by no serial order (before T1, B is uncredited; after, A is debited) — the growing-then-shrinking shape is precisely what forbids the gap',
+            'Nothing — T2 got a dirty read, which all isolation levels permit',
+            'The lock manager failed to detect the deadlock between T1 and T2',
+          ],
+          correct: [1],
+          explanation:
+            'No deadlock exists — the transactions do not wait on each other. The failure is serializability: the early release opened a gap another transaction\'s reads interleaved through, producing a state no serial execution can produce. Two-phase locking is the rule that keeps every transaction\'s lock point well-defined, and strict 2PL (write locks held to commit) removes the gap entirely.',
+        },
+        {
+          q: 'Which of these prevent deadlock cycles *by construction*, rather than finding or breaking them after the fact? (Select all that apply.)',
+          multi: true,
+          options: [
+            'wait-die: old waits for young; young requesting old\'s lock aborts and restarts with its original timestamp',
+            'wound-wait: old requesting young\'s lock aborts the holder; young waits for old',
+            'A waits-for graph walk after deadlock_timeout, shooting a victim on a cycle',
+            'A fixed lock_timeout that aborts any transaction waiting too long',
+          ],
+          correct: [0, 1],
+          explanation:
+            'Both timestamp schemes make waits flow in exactly one age direction, and a cycle requires an edge backwards in time — impossible by construction. Graph walks detect cycles that already formed; timeouts break waits blindly (and abort non-deadlocked transactions). Useful, industrial, and not prevention.',
+        },
+        {
+          q: 'A workload hammers one hot counter row from hundreds of concurrent transactions. Which scheme fares worse, and why?',
+          options: [
+            '2PL — the lock table overflows and escalates to a table lock',
+            'OCC — every concurrent transaction reads the same row into its read set, the first commit invalidates all the others, and validation turns into an abort-and-retry storm; 2PL merely queues them and finishes',
+            'OCC — its private workspaces run out of memory',
+            'Both fare identically — contention is contention',
+          ],
+          correct: [1],
+          explanation:
+            'This is the contention profile deciding absolutely. 2PL pays per operation: a queue forms on the hot row, throughput drops to serial, work completes. OCC pays per transaction: each loser re-runs everything and re-conflicts with the next committer. Optimism is a bet that conflicts are rare; a hot row is the bet called.',
+        },
+      ],
+    },
+    {
+      type: 'deepdive',
+      title: 'going deeper: the theory shelf',
+      md: `The survey that organized the whole field: **Bernstein & Goodman, "Concurrency Control in Distributed Database Systems" (ACM Computing Surveys, 1981)** — 2PL, timestamp ordering, and optimistic methods in one taxonomy; every concurrency-control lecture since is a summary of it. The heresy itself: **Kung & Robinson, "On Optimistic Methods for Concurrency Control" (ACM TODS, 1981)** — read/validate/write, backward and forward validation, and the explicit argument that restarts are cheaper than waiting when conflicts are rare. The age-based deadlock schemes: **Rosenkrantz, Stearns & Lewis, "System Level Concurrency Control for Distributed Database Systems" (ACM TODS, 1978)** — wait-die and wound-wait in five pages. The industrial bible: **Gray & Reuter, "Transaction Processing: Concepts and Techniques" (1993)** — the lock manager chapters are what InnoDB's source code is thinking about. And the live-coded version: **CMU 15-445's concurrency-control lectures** — two-phase locking, deadlock handling, OCC, and timestamp ordering, in the same order as this lesson.`,
+    },
+  ],
+}
+
+export default lesson

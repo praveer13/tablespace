@@ -29,6 +29,32 @@ export interface ForgeLab {
 
 export const FORGE_LABS: ForgeLab[] = [
   {
+    id: 'rust-kv',
+    index: 0,
+    title: 'Fix the Compiler First',
+    hook: 'The warmup: five compile errors that each teach one Rust move, then compare-and-set and a prefix scan — the toolchain loop before the concepts bite.',
+    trackId: 'tr',
+    lessonId: 'tr.l4',
+    minutes: 40,
+    zip: '/labs/rust-kv.zip',
+    artifact: 'target/wasm32-unknown-unknown/release/rust_kv.wasm',
+    editFile: 'src/kv.rs',
+    completion: {
+      title: 'all three green — the compiler is your colleague now.',
+      next: 'next: lab 01. Eight kilobytes of order — and this time the errors are logic, not syntax.',
+    },
+    checks: [
+      { id: 'basics', label: 'get/put/delete round-trip after the compile fixes' },
+      { id: 'cas_semantics', label: 'cas applies iff current == expected (None = absent)' },
+      { id: 'storm', label: '500 ops vs a reference model' },
+    ],
+    brief: [
+      'Every other lab in this course hands you a compiling template and a failing suite. This one hands you a file that does not compile at all — five deliberate errors, rustlings-style, each one a single Rust move: a binding you must declare mutable, a String used after it moved, a match that has not considered every case, a function whose return type lies about what it hands back, a shared borrow asked to mutate. The compiler is the tutor here: read each message the way you would read a code review from someone pedantic and always right, apply the fix it suggests, and understand why the rule exists before you rerun.',
+      'The loop is the one every forge lab runs, and this lab exists to make it muscle memory: cargo test, read, fix, rerun. The first red is the compiler\'s, not the checks\' — the suite cannot even run until the crate builds. Once it does, the basics check flips green immediately, because your five fixes just finished get/put/delete. Two todo!()s remain: cas — write iff the current value equals what you expected, None meaning "the key must be absent" — and scan_prefix, a sorted range walk over the BTreeMap. A todo!() left standing traps the module, and the lab page renders the trap as "not implemented yet": half-done is loud here, never silent. Green locally, then cargo build --release --target wasm32-unknown-unknown and drop the .wasm on the page.',
+      'Why a warmup at all: labs 01–06 assume you read Option, Result, and &mut the way you read assignment — no translation step. The slotted page in lab 01 is hard enough without also learning what "cannot borrow as mutable" means while you are inside it. Build the fluency here, where the whole store fits in your head, and the eight kilobytes of order that come next cost you design effort instead of syntax tax.',
+    ],
+  },
+  {
     id: 'slotted-pages',
     index: 1,
     title: 'Eight Kilobytes of Order',

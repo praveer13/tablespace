@@ -1,0 +1,16 @@
+[package]
+name = "rust-kv"
+version = "0.1.0"
+edition = "2021"
+description = "forge lab 00 — warmup: five compile errors to fix, then compare-and-set and a prefix scan (tablespace)"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+kslab = { path = "../kit" }
+
+[profile.release]
+opt-level = 2
+debug = false

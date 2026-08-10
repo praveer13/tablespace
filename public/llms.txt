@@ -36,6 +36,7 @@ _Databases are, at the bottom, files. This track is the contract those files are
 - [T0.L2 The Cost Model of Reality](https://tablespace.play.naigap.com/lessons-md/t0.l2.md): Random vs sequential I/O, HDD physics vs SSD truth, and the orders-of-magnitude table every query planner secretly carries.
 - [T0.L3 An Operating System for One File](https://tablespace.play.naigap.com/lessons-md/t0.l3.md): The buffer pool: frames, pins, dirty bits — and why the database distrusts the OS page cache it runs on top of.
 - [T0.L4 Eviction Is a Bet](https://tablespace.play.naigap.com/lessons-md/t0.l4.md): LRU, clock-sweep, and the sequential-flood problem: eviction policies are predictions about your workload's future.
+- [T0.L5 Eviction at Production Grade: LRU-K](https://tablespace.play.naigap.com/lessons-md/t0.l5.md): The five-minute rule, backward k-distance, and why "when did you last touch it" is the wrong question — the replacer CMU makes you build first.
 
 ### T1 — Pages & Tuples
 
@@ -54,6 +55,8 @@ _The two great index families. B+trees: sortedness under inserts, splits, merges
 - [T2.L2 Splits, Merges, and Staying Balanced](https://tablespace.play.naigap.com/lessons-md/t2.l2.md): The insert that cascades to the root, the delete that forces a rebalance, and the occupancy proofs that keep the tree shallow — by construction.
 - [T2.L3 The Write-Optimized Counterpoint](https://tablespace.play.naigap.com/lessons-md/t2.l3.md): Memtables, SSTables, levels, compaction: how LSM trees trade read amplification for write throughput — and why Cassandra, RocksDB, and TigerBeetle all chose them.
 - [T2.L4 Choosing the Index Family](https://tablespace.play.naigap.com/lessons-md/t2.l4.md): B+tree vs LSM vs hash vs ART: workload shapes, amplification math, and the honest decision table — no slogans.
+- [T2.L5 Hashing Grows Up: Extendible and Linear](https://tablespace.play.naigap.com/lessons-md/t2.l5.md): A hash index that never rehashes the world: directory doubling, local depth, and the split that touches one bucket.
+- [T2.L6 Latch Crabbing: The Concurrent B+Tree](https://tablespace.play.naigap.com/lessons-md/t2.l6.md): A B+tree under 16 writer threads is a queue disguised as an index — unless you crab: hold the parent, grab the child, release the parent only when the child is safe.
 
 ### T3 — WAL & Recovery
 
@@ -71,6 +74,7 @@ _Many readers, many writers, one truth per snapshot. MVCC from version chains to
 - [T4.L2 The Anomaly Zoo](https://tablespace.play.naigap.com/lessons-md/t4.l2.md): Dirty reads to write skew: the isolation levels as a menu of which anomalies your application can afford — named, shown, and priced.
 - [T4.L3 Conflicts and Serializable Snapshots](https://tablespace.play.naigap.com/lessons-md/t4.l3.md): Write-write conflicts, optimistic vs pessimistic concurrency, and how SSI gets serializability without a lock manager.
 - [T4.L4 The Garbage Is Yours](https://tablespace.play.naigap.com/lessons-md/t4.l4.md): Dead tuples, vacuum, freezing, and hot-page contention: the operational tax MVCC never mentions in the brochure.
+- [T4.L5 Two-Phase Locking and OCC](https://tablespace.play.naigap.com/lessons-md/t4.l5.md): Before MVCC there was the lock manager: grow/shrink, deadlocks, wait-die vs wound-wait — and the optimistic heresy that validates at commit.
 
 ### T5 — The Executor & the Planner
 
@@ -79,6 +83,7 @@ _SQL is a promise; the executor keeps it. The volcano pull model, join strategie
 - [T5.L1 Pull, Not Push](https://tablespace.play.naigap.com/lessons-md/t5.l1.md): The volcano model: open/next/close, pipelining, and why every executor you have ever used is the same six iterators. Then lab 05 — over your own pages and tree.
 - [T5.L2 Three Ways to Join](https://tablespace.play.naigap.com/lessons-md/t5.l2.md): Nested-loop, hash, merge: each join's cost in I/Os and memory, and the cardinalities that decide between them.
 - [T5.L3 The Planner Guesses](https://tablespace.play.naigap.com/lessons-md/t5.l3.md): Statistics, selectivity, cost models: why the planner picks bad plans on your data specifically, and how to read EXPLAIN as an estimate sheet.
+- [T5.L4 When the Data Doesn't Fit: External Sorting](https://tablespace.play.naigap.com/lessons-md/t5.l4.md): Sort a terabyte with 4GB of RAM: runs, k-way merge, double buffering — and why "sort" is really "the engine's universal solvent."
 
 ### T6 — Vectors & HNSW
 
@@ -87,6 +92,14 @@ _The index everyone tunes by superstition. Approximate nearest neighbors from fi
 - [T6.L1 Why Exact Neighbors Die](https://tablespace.play.naigap.com/lessons-md/t6.l1.md): The curse of dimensionality: distance concentration, why every exact index degrades to a scan, and what "approximate" buys back.
 - [T6.L2 HNSW, Layer by Layer](https://tablespace.play.naigap.com/lessons-md/t6.l2.md): Skip lists reborn as graphs: entry points, greedy descent, neighbor selection — the index behind pgvector, honestly derived. Then you build one — lab 06.
 - [T6.L3 Recall Is a Curve, Not a Number](https://tablespace.play.naigap.com/lessons-md/t6.l3.md): ef_search sweeps, filtered ANN and iterative scans, pgvector vs purpose-built — and the capstone question: build, tune, or buy.
+
+### T7 — The Analytical Turn
+
+_Everything so far served the point transaction. This track turns the engine around: analytics wants columns, batches, and SIMD — and the planner search that decides between all of it._
+
+- [T7.L1 Columnar: The Other Layout](https://tablespace.play.naigap.com/lessons-md/t7.l1.md): Store columns together and the same query reads 2% of the bytes: DSM, compression, zone maps, and when the row store still wins.
+- [T7.L2 Vectorized Execution](https://tablespace.play.naigap.com/lessons-md/t7.l2.md): The volcano pulls one tuple at a time and the CPU yawns; feed it 1024-value batches and the same operators run 10–50× faster.
+- [T7.L3 How the Optimizer Searches](https://tablespace.play.naigap.com/lessons-md/t7.l3.md): System R's 1979 dynamic program still picks your join order: left-deep trees, interesting orders, and the memo — then Cascades made it a framework.
 
 ## Optional
 

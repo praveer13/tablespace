@@ -366,7 +366,7 @@ export default function CurriculumPage() {
             <p className="font-mono text-label uppercase text-text-3">0x02 — address space map</p>
             <h1 className="mt-3 font-display text-display-lg text-text-1">Curriculum</h1>
             <p className="mt-4 max-w-measure text-body-lg text-text-2">
-              Eight tracks, twenty-nine lessons, one capstone. The stack reads bottom to top: disk
+              Nine tracks, thirty-seven lessons, one capstone. The stack reads bottom to top: disk
               physics at the base, vector indexes at the summit. Every layer is unlocked — the order is the point.
             </p>
             {/* legend */}
@@ -445,7 +445,7 @@ export default function CurriculumPage() {
           <div className="relative">
             <div className="flex items-center gap-3 py-1 pl-6">
               <span className="h-6 border-l border-dashed border-line-bright" />
-              <span className="font-mono text-[10px] text-text-3">requires T0–T6 · the whole arc</span>
+              <span className="font-mono text-[10px] text-text-3">requires T0–T7 · the whole arc</span>
             </div>
             <Link
               to="/labs/hnsw"

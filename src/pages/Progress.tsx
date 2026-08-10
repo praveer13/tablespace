@@ -160,6 +160,14 @@ const ACHIEVEMENTS: AchievementDef[] = [
     derived: (s) => trackDone(s, 't6', 3),
   },
   {
+    id: 'track-t7',
+    name: 'the analytical turn',
+    cond: 'complete T7 — The Analytical Turn',
+    icon: Cpu,
+    color: '#A3E635',
+    derived: (s) => trackDone(s, 't7', 3),
+  },
+  {
     id: 'forge-first',
     name: 'first forge',
     cond: 'pass any forge lab',
@@ -207,7 +215,7 @@ const ACHIEVEMENTS: AchievementDef[] = [
     color: '#FFB224',
     derived: (s) =>
       Object.values(s.lessons).filter((l) => l.status === 'done').length >= TOTAL_LESSONS &&
-      ['slotted-pages', 'btree', 'wal', 'mvcc', 'volcano', 'hnsw'].every((id) =>
+      ['rust-kv', 'slotted-pages', 'btree', 'wal', 'mvcc', 'volcano', 'hnsw'].every((id) =>
         labDone(s, id),
       ),
   },
@@ -509,12 +517,12 @@ function TrackBreakdown() {
             </div>
             <div className="flex h-[240px] flex-col justify-between font-mono text-[10px] text-text-3">
               <span>0x00</span>
-              <span>0x0E</span>
-              <span>0x1C</span>
+              <span>0x12</span>
+              <span>0x24</span>
             </div>
           </div>
           <p className="mt-3 font-mono text-[10px] text-text-3">
-            29 lesson blocks · solid = allocated · glow = next instruction
+            37 lesson blocks · solid = allocated · glow = next instruction
           </p>
         </motion.div>
       </div>

@@ -1,0 +1,150 @@
+import type { Lesson } from '../types'
+
+const lesson: Lesson = {
+  id: 't7.l3',
+  slug: 'how-the-optimizer-searches',
+  trackId: 't7',
+  index: 3,
+  title: 'How the Optimizer Searches',
+  minutes: 15,
+  hook: 'System R\'s 1979 dynamic program still picks your join order: left-deep trees, interesting orders, and the memo — then Cascades made it a framework.',
+  exercise: 'quiz',
+  blocks: [
+    {
+      type: 'prose',
+      md: `T5.L3 taught you the planner *guesses*: statistics, selectivities, estimates that compound. This lesson is what it does with the guesses — **search**. A join of n relations has **n! left-deep orders** before you even choose algorithms and access paths: 10 tables is 3.6M orders, 15 is ~1.3 trillion, and allowing **bushy** trees (joining join results to join results) multiplies by a Catalan number for good measure. Exhaustive enumeration is dead by seven tables.
+
+And yet your 12-way join plans in milliseconds. The machinery that makes that possible is a dynamic program from **1979**, essentially unchanged in the Postgres that plans your queries today — and its generalization, Cascades, is the framework every modern analytical engine is built on. Two ideas, one lesson.`,
+    },
+    {
+      type: 'prose',
+      md: `## System R's dynamic program
+
+Selinger et al.'s insight is **optimal substructure**: the cheapest plan for joining {A,B,C} contains, as a subtree, the cheapest plan for joining one of its pairs. So build bottom-up, level by level:
+
+1. **Level 1** — for each base relation, keep the cheapest access path: seq scan vs each usable index, priced with T0's constants over T5.L3's row estimates.
+2. **Level k** — for each k-relation subset, try extending each kept (k−1)-subset plan with the remaining relation, under each join algorithm (T5.L2's three). Keep only the cheapest per subset; discard the rest.
+3. **Stop at level n** — one plan survives.
+
+The count: **2ⁿ subsets**, each extended by ≤ n relations — at n = 12 that is 4,096 subsets against **479 million** left-deep orders. Exponential, but a rounding error next to factorial. Two restrictions keep it honest and fast: trees are **left-deep** (the inner side of a nested-loop is always a base relation, preserving the index-descent plan from T5.L2 and keeping pipelines streaming), and cross products are considered only when a predicate demands them. Postgres runs this exact algorithm — and past \`geqo_threshold\` (default **12 relations**) it stops searching exactly and hands the problem to a genetic algorithm, which tells you precisely where even 2ⁿ gets uncomfortable.`,
+    },
+    {
+      type: 'prose',
+      md: `## Interesting orders: the subtle star
+
+Cheapest-per-subset is *almost* sound, and the "almost" is the best idea in the whole paper. Suppose for {orders, customers} the hash join is cheapest — but an indexed nested-loop costs slightly more *and emits rows sorted on customer_id*. One level up, a merge join wants exactly that order as its precondition (T5.L2); above that, the query's ORDER BY wants it too. The pricier plan's output is an **asset**: pruning it on price alone can force a sort later that costs more than the difference.
+
+System R's fix: keep the cheapest plan per **(subset, interesting order)** — where an interesting order is any sortedness some downstream operator (merge join, GROUP BY, ORDER BY) could exploit. This is "one sort funds two jobs" promoted from a join-costing footnote to a *search rule*, and it generalizes into the single most durable design decision in optimizer architecture: **a plan is not just a logical answer, it is an answer with physical properties** — order, partitioning, grouping — and the search keeps contenders per property, not per price. Every optimizer since, Cascades included, keys its memo on exactly that pair.`,
+    },
+    {
+      type: 'diagram',
+      caption: 'fig 2 — the DP table for {A, B, C}',
+      height: 60,
+      nodes: [
+        { id: 'a', x: 4, y: 4, w: 26, h: 10, label: '{A}', sub: 'seq vs idx — keep 1 (+orders)', color: '#5CA8FF' },
+        { id: 'b', x: 37, y: 4, w: 26, h: 10, label: '{B}', sub: 'seq vs idx', color: '#5CA8FF' },
+        { id: 'c', x: 70, y: 4, w: 26, h: 10, label: '{C}', sub: 'seq only', color: '#5CA8FF' },
+        { id: 'ab', x: 8, y: 26, w: 26, h: 10, label: '{A,B}', sub: 'hash wins · idx-nl kept*', color: '#3EF2A4' },
+        { id: 'ac', x: 48, y: 26, w: 26, h: 10, label: '{A,C}', sub: 'merge kept: sorted*', color: '#3EF2A4' },
+        { id: 'bc', x: 28, y: 26, w: 1, h: 1, label: '', sub: '' },
+        { id: 'abc', x: 28, y: 46, w: 44, h: 10, label: '{A,B,C}', sub: 'one plan survives', color: '#A3E635' },
+      ],
+      edges: [
+        { from: 'a', to: 'ab' },
+        { from: 'b', to: 'ab' },
+        { from: 'a', to: 'ac' },
+        { from: 'c', to: 'ac' },
+        { from: 'ab', to: 'abc', label: '+ C' },
+        { from: 'ac', to: 'abc', label: '+ B' },
+      ],
+      steps: [
+        { caption: 'Level 1: price every access path per relation with T0’s constants and T5.L3’s row estimates; keep the cheapest, plus any path whose output order is interesting.', active: ['a', 'b', 'c'] },
+        { caption: 'Level 2: each pair from its members. For {A,B} the hash is cheapest — but the indexed nested-loop emits customer_id order, so it survives pruning with an asterisk: same subset, different physical property.', active: ['ab', 'a', 'b'], edges: ['a->ab', 'b->ab'] },
+        { caption: '{A,C} keeps a merge join whose sorted output the final ORDER BY wants. A plan dominated on price is not dominated if its order is valuable upstream.', active: ['ac', 'a', 'c'], edges: ['a->ac', 'c->ac'] },
+        { caption: 'Level 3: extend each kept pair-plan with the third relation, every join algorithm; the sorted survivor may fund the ORDER BY for free. 2ⁿ subsets total — at n=12, 4,096 states against 479M left-deep orders.', active: ['abc'], edges: ['ab->abc', 'ac->abc'] },
+      ],
+    },
+    {
+      type: 'prose',
+      md: `## Garbage in, elegant DP out
+
+Hold the two halves of the optimizer together and name the seam. The DP is **provably optimal under its cost model** — and the cost model runs on T5.L3's sketch: 30,000 sampled rows, independence assumed, expressions opaque. A 2× selectivity miss at a scan compounds through every join above it, and join order is where mis-estimates detonate: Leis et al. measured real optimizers against reality and found the catastrophic plans are born in **cardinality estimation, not in the search**. The DP is a flawless judge reading forged evidence.
+
+The engineering discipline this implies is worth stating plainly: when a plan is wrong, debug the *inputs* — fresh ANALYZE, extended statistics on correlated columns, expression indexes — before you blame the search, and before you reach for a hint. The search will faithfully re-offend on tomorrow's data; a fixed statistic keeps the judge honest. Hints pin plans; statistics let the planner keep choosing.`,
+    },
+    {
+      type: 'prose',
+      md: `## Cascades: the search becomes a framework
+
+System R's DP is an *algorithm* — hardcoded around join ordering, bottoms-up, relational algebra baked in. **Cascades (Graefe, 1995)** asks what happens if you make the search itself programmable. Three pieces:
+
+- **The memo**: a shared table of **groups** — equivalence classes of logically identical expressions (\`A ⋈ B\` and \`B ⋈ A\` live in one group) — so nothing is ever re-derived, and the memo persists across the whole search.
+- **Rules**: **transformations** map expressions to equivalent expressions (push the predicate below the join; commute the join); **implementation rules** map logical operators to physical ones (join → hash / merge / nested-loop, with required properties attached).
+- **Top-down, goal-driven search**: \`optimize(group, required physical properties, cost bound)\` — the interesting-order insight, promoted to the API — with branch-and-bound pruning: once a plan beats the bound, worse explorations die unexplored.
+
+What changed: rewrites and planning became **one search** — predicate pushdown competes with join ordering in the same memo — and adding a rule adds plans without touching the engine. The lineage runs SQL Server (whose optimizer is Cascades' direct descendant) through Calcite, Orca, and CockroachDB. And the 2026 answer to "where do I start": **optd**, CMU's Cascades-style optimizer framework born in the 15-721 orbit, and **DataFusion**, the Rust query-engine substrate it plugs into — the pair of projects that mean a new engine no longer writes its own optimizer. Postgres, characteristically, still runs its System R descendant plus geqo — and carries the OLTP world regardless.`,
+    },
+    {
+      type: 'callout',
+      variant: 'isomorphism',
+      md: `You have met this recurrence before, in disguise: the join-ordering DP **is** the Held–Karp algorithm for the traveling salesman. Subsets as states, "cheapest way to assemble this set ending here," 2ⁿ states where the naive problem has n! tours — the same factorial-for-exponential trade, the same proof shape. Two morals. First, the classic algorithms curriculum is closer to your query planner than either admits. Second, the asterisk: real problems always add one more dimension to the clean recurrence — Held–Karp gets time windows, System R gets interesting orders, and the (subset, physical property) key is what the textbook recurrence looks like after production gets to it.`,
+    },
+    {
+      type: 'statline',
+      stats: [
+        { value: 'n!', label: 'left-deep orders, naive', hint: '10 tables → 3.6M; 15 → ~1.3 trillion. Before join algorithms and access paths multiply it further.' },
+        { value: '2ⁿ', label: 'DP states', hint: 'Cheapest plan kept per subset (per interesting order). At n = 12: 4,096 subsets vs 479M orders.' },
+        { value: '12', label: 'geqo_threshold', hint: 'Past this many relations Postgres abandons exact search for a genetic algorithm. The precise point where even 2ⁿ gets uncomfortable.' },
+        { value: '1979', label: 'Selinger et al.', hint: 'Access Path Selection in a Relational Database Management System — System R’s optimizer, still planning your queries.' },
+      ],
+    },
+    {
+      type: 'quiz',
+      questions: [
+        {
+          q: 'In System R\'s DP, a plan for {orders, customers} that is *pricier* than the kept plan is sometimes retained anyway. Why?',
+          options: [
+            'It is kept as a backup in case the cheaper plan deadlocks',
+            'Its output has a physical property — sortedness on a join key — that a merge join, GROUP BY, or ORDER BY upstream can exploit: cheapest per (subset, interesting order), not per subset',
+            'The DP never prunes; it keeps every plan for completeness',
+            'Pricier plans are kept when statistics are stale',
+          ],
+          correct: [1],
+          explanation:
+            'A plan dominated on price is not dominated if its physical properties are valuable upstream. Keeping contenders per (subset, interesting order) is the rule that lets a slightly expensive sort-friendly plan beat a cheap plan plus a later sort — and it is the ancestor of the Cascades memo key.',
+        },
+        {
+          q: 'A query joins 12 relations. Why can\'t the optimizer enumerate all join orders — and what does the DP explore instead?',
+          options: [
+            'It can; modern hardware makes 12! trivial',
+            '12! ≈ 479M left-deep orders (× algorithms × access paths) is untouchable in a millisecond planning budget; the DP visits 2¹² = 4,096 subsets, keeping the cheapest plan per (subset, interesting order)',
+            'The optimizer enumerates 12! but caches plans across queries',
+            'Join order doesn\'t matter past 6 tables, so only pairs are checked',
+          ],
+          correct: [1],
+          explanation:
+            'Optimal substructure trades the factorial for an exponential: the best plan for a set of relations contains best plans for its subsets. 4,096 states fit in milliseconds; 479M orders do not. Past geqo_threshold = 12, even Postgres agrees the exact DP has limits and switches to a genetic search.',
+        },
+        {
+          q: 'What did Cascades fundamentally change about query optimization?',
+          options: [
+            'It replaced cost-based search with learned models',
+            'It made enumeration exhaustive by parallelizing it',
+            'It turned a fixed join-ordering algorithm into a rule-driven framework: a memo of equivalence groups, transformation and implementation rules, and top-down search keyed on required physical properties — rewrites and planning became one search',
+            'It removed the cost model, relying on heuristics only',
+          ],
+          correct: [2],
+          explanation:
+            'Cascades kept the cost model and the physical-properties insight, and generalized the machinery: any rewrite or operator implementation is just another rule feeding one memoized search. That extensibility is why SQL Server, Calcite, CockroachDB, and optd all descend from it.',
+        },
+      ],
+    },
+    {
+      type: 'deepdive',
+      title: 'going deeper: from Selinger to optd',
+      md: `The source: **Selinger et al., "Access Path Selection in a Relational Database Management System" (SIGMOD, 1979)** — DP over subsets, interesting orders, selectivity estimation, eight pages that outlived the century. The framework: **Graefe, "The Cascades Framework for Query Optimization" (IEEE Data Engineering Bulletin, 1995)** — memo, groups, rules, top-down search; short and dense. The lectures: **CMU 15-721 on query optimization** — top-down vs bottom-up, implementation rules, and the modern extensions. The measurement that keeps everyone humble: **Leis et al., "How Good Are Query Optimizers, Really?" (VLDB, 2015)** — the catastrophes live in cardinality estimation, exactly the seam this lesson named. And the 2026 starting point: **optd** (CMU's Cascades-style optimizer framework) plus **DataFusion** (the Rust execution substrate) — read their docs the way this course reads Postgres: as the design, written down.`,
+    },
+  ],
+}
+
+export default lesson

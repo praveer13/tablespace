@@ -6,6 +6,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import {
+  Cpu,
   Database,
   GitBranch,
   HardDrive,
@@ -48,8 +49,8 @@ export const TRACKS: TrackMeta[] = [
     color: '#22D3EE',
     glyph: HardDrive,
     promise: 'What a page is, why 8KB, and why the buffer pool is an operating system for one file.',
-    lessons: 4,
-    exercises: 4,
+    lessons: 5,
+    exercises: 5,
     hours: 2,
   },
   {
@@ -70,8 +71,8 @@ export const TRACKS: TrackMeta[] = [
     color: '#3EF2A4',
     glyph: GitBranch,
     promise: 'The two great index families: B+tree splits and balance proofs, LSM levels and compaction — and when each wins.',
-    lessons: 4,
-    exercises: 4,
+    lessons: 6,
+    exercises: 6,
     hours: 2,
   },
   {
@@ -92,8 +93,8 @@ export const TRACKS: TrackMeta[] = [
     color: '#A78BFA',
     glyph: Database,
     promise: 'Version chains, snapshots, the anomaly zoo, and vacuum — many readers and writers on one honest engine.',
-    lessons: 4,
-    exercises: 4,
+    lessons: 5,
+    exercises: 5,
     hours: 2,
   },
   {
@@ -103,8 +104,8 @@ export const TRACKS: TrackMeta[] = [
     color: '#FB7185',
     glyph: Workflow,
     promise: 'Volcano pull, join strategies, and why the planner mis-estimates your data specifically.',
-    lessons: 3,
-    exercises: 3,
+    lessons: 4,
+    exercises: 4,
     hours: 2,
   },
   {
@@ -114,6 +115,17 @@ export const TRACKS: TrackMeta[] = [
     color: '#E879F9',
     glyph: Radar,
     promise: 'The index you tuned by superstition: approximate neighbors, recall/latency physics, and the build-or-buy answer.',
+    lessons: 3,
+    exercises: 3,
+    hours: 2,
+  },
+  {
+    code: 'T7',
+    id: 't7',
+    name: 'The Analytical Turn',
+    color: '#A3E635',
+    glyph: Cpu,
+    promise: 'Columnar storage, vectorized execution, and how the optimizer actually searches — the 15-721 layer.',
     lessons: 3,
     exercises: 3,
     hours: 2,

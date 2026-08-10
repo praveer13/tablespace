@@ -28,6 +28,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-kv"
+version = "0.1.0"
+dependencies = [
+ "kslab",
+]
+
+[[package]]
 name = "slotted-pages"
 version = "0.1.0"
 dependencies = [

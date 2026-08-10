@@ -1,0 +1,158 @@
+import type { Lesson } from '../types'
+
+const lesson: Lesson = {
+  id: 't5.l4',
+  slug: 'external-sorting',
+  trackId: 't5',
+  index: 4,
+  title: 'When the Data Doesn\'t Fit: External Sorting',
+  minutes: 13,
+  hook: 'Sort a terabyte with 4GB of RAM: runs, k-way merge, double buffering — and why "sort" is really "the engine\'s universal solvent."',
+  exercise: 'quiz',
+  blocks: [
+    {
+      type: 'prose',
+      md: `T5.L1 left sort as a sentence — "pulls the child dry, sorts in memory, or past \`work_mem\` spills sorted runs to disk and merges them" — and T5.L2 kept invoking "external merge sort" as the price of sortedness. This lesson pays both debts. The setup is one number away from absurd: sort a **1TB table** with **4GB** of memory. The data is 250× the workspace. Nothing fits, and yet the classical answer finishes in *two passes over the disk*.
+
+The reason sorting deserves a lesson of its own: it is the engine's **universal solvent**. Ordered output, deduplication, grouping, index builds, the merge join's precondition — half the executor's hard problems dissolve if you can sort cheaply. And "cheaply" here means exactly what T0 taught: make every I/O sequential, and make the pass count tiny.`,
+    },
+    {
+      type: 'prose',
+      md: `## Pass zero: runs
+
+The two-way external merge sort, in its textbook form. **Pass 0**: read B pages (whatever fits in memory), sort them — quicksort, anything — and write the result as a **run**: a sorted fragment on disk. An N-page table becomes **⌈N/B⌉ runs**. Then **merge passes**: open two runs, walk both cursors emitting the smaller head (this is merge sort's merge step, on files), write a run twice as long. Each pass halves the run count, so:
+
+\`passes = 1 + ⌈log₂(N/B)⌉\`, and every pass reads and writes each page once: \`I/Os = 2N × passes\`.
+
+Price it small to see the shape: N = 1000 pages, B = 5. Pass 0 makes 200 runs; merging two at a time needs ⌈log₂ 200⌉ = 8 more passes — **9 passes, 18,000 page I/Os, to sort eight megabytes.** The log is doing all the work, and it is doing it against you.`,
+    },
+    {
+      type: 'prose',
+      md: `## The generalization: B−1 ways at once
+
+The two-way story is a lie of omission: it uses 3 buffers — two in, one out. You have B. Reserve **one buffer for output** and point the other **B−1 at inputs**: one merge pass now collapses B−1 runs into one, and the run count divides by (B−1) per pass instead of 2:
+
+\`passes = 1 + ⌈log_{B−1}(⌈N/B⌉)⌉\`
+
+Now the terabyte. 1TB ≈ **134M** 8KB pages; 4GB ≈ **524k** pages of buffer. Pass 0 writes **256 runs** of 4GB each. And then the fan-in detonates the log: B−1 ≈ 524,287, so 256 runs fit in a *single* merge pass — log₅₂₄₂₈₇(256) < 1. **Two passes total: generate, merge, done** — about 4TB of I/O, all of it sequential, which on T0's axis is the fast kind. The k-way merge is why real external sorts take two or three passes, never the textbook's nine. (Inside the merge, a loser-tree tournament picks the smallest of B−1 run heads in O(log B) comparisons — the merge loop's inner detail, and worth one sentence.)`,
+    },
+    {
+      type: 'prose',
+      md: `## Hiding the I/O, lengthening the runs
+
+Two refinements separate the textbook from tuplesort.c.
+
+**Double buffering.** Sorting run *i* is CPU work; fetching run *i+1* is I/O. Keep two sets of input buffers and alternate: while the CPU sorts one fill, the disk prefetches the next. Sort time becomes **max(CPU, I/O)** instead of CPU + I/O — the same overlap trick as every async runtime you have ever used, wearing a buffer pool.
+
+**Replacement sort.** Quicksort-then-write gives runs of exactly B pages. Do this instead: fill memory, then repeatedly emit the smallest record and *refill its slot from the unsorted input* — a tournament selection where any newcomer smaller than the last emitted key is deferred to the next run. For random input, runs average **~2B pages** (Knuth's analysis; the snowplow analogy is his too — plows circle a snowy track, and the snow cleared per lap is the run length). Double-length runs mean half as many of them, which routinely deletes an entire merge pass. This is the kind of optimization databases specialize in: no new hardware, just a better invariant, and a factor of two falls out.`,
+    },
+    {
+      type: 'diagram',
+      caption: 'fig 1 — a terabyte in two passes',
+      height: 58,
+      nodes: [
+        { id: 'input', x: 3, y: 4, w: 26, h: 10, label: 'fact table', sub: '1 TB · 134M pages', color: '#5CA8FF' },
+        { id: 'pass0', x: 37, y: 4, w: 26, h: 10, label: 'pass 0', sub: 'sort 4GB fills', color: '#FBBF24' },
+        { id: 'r1', x: 8, y: 26, w: 18, h: 8, label: 'run 1', sub: '4 GB sorted', color: '#3EF2A4' },
+        { id: 'r2', x: 30, y: 26, w: 18, h: 8, label: 'run 2', sub: '4 GB sorted', color: '#3EF2A4' },
+        { id: 'rN', x: 52, y: 26, w: 18, h: 8, label: '… run 256', sub: '4 GB sorted', color: '#3EF2A4' },
+        { id: 'merge', x: 74, y: 26, w: 22, h: 8, label: 'k-way merge', sub: '256 < B−1 inputs', color: '#FB7185' },
+        { id: 'output', x: 74, y: 44, w: 22, h: 9, label: 'sorted table', sub: 'sequential write', color: '#A78BFA' },
+      ],
+      edges: [
+        { from: 'input', to: 'pass0', label: 'read B pages at a time' },
+        { from: 'pass0', to: 'r1' },
+        { from: 'pass0', to: 'r2' },
+        { from: 'pass0', to: 'rN' },
+        { from: 'r1', to: 'merge' },
+        { from: 'r2', to: 'merge' },
+        { from: 'rN', to: 'merge' },
+        { from: 'merge', to: 'output' },
+      ],
+      steps: [
+        { caption: 'Pass 0 streams the table B pages at a time — sequential reads. Each fill is sorted (replacement sort, if you want ~2× longer runs for free) and written as a run: sequential writes.', active: ['input', 'pass0'], edges: ['input->pass0'] },
+        { caption: 'Result: 256 runs of 4GB each. Every byte has now been read once and written once — 2TB of I/O so far, none of it random.', active: ['r1', 'r2', 'rN'], edges: ['pass0->r1', 'pass0->r2', 'pass0->rN'] },
+        { caption: 'The k-way merge opens all 256 runs at once: 256 input buffers is nothing against B−1 ≈ 524,287. A loser tree picks the smallest head each step; the output buffer flushes when full.', active: ['merge', 'r1', 'r2', 'rN'], edges: ['r1->merge', 'r2->merge', 'rN->merge'] },
+        { caption: 'One merge pass later: sorted. Total: 2 passes, ~4TB sequential I/O. The textbook two-way merge would have needed 9 passes and 18TB — the fan-in was the whole game.', active: ['output'], edges: ['merge->output'] },
+      ],
+    },
+    {
+      type: 'prose',
+      md: `## The universal solvent
+
+Once sorting is cheap and sequential, it shows up everywhere, usually wearing another operator's name:
+
+- **ORDER BY** — the obvious one.
+- **GROUP BY** — sort-group: sorted input makes aggregation a single pass with one accumulator at a time.
+- **Merge join** — T5.L2's precondition; the sort is what you pay to get "one sort funds two jobs."
+- **CREATE INDEX** — bulk load: sort the keys, then build the B+tree bottom-up, writing each level sequentially. This is why building an index is fast and updating it (T2's splits) is not.
+- **DISTINCT, INTERSECT, EXCEPT** — dedup and set ops are a merge with a filter on the walk.
+
+And everywhere sort goes, it duels **hash**. Hashing wins when it fits in memory and you only need grouping or lookup: one pass, no order produced, nothing reusable. Sort wins when order is wanted downstream, when the input arrives partially sorted, or when you value graceful degradation — sort under memory pressure adds passes, *linearly*; a misjudged hash spills into Grace buckets, and T5.L2 already priced that. The planner re-fights this duel per query, with T5.L3's sketchy numbers; T7.L3 shows the search that does the fighting.`,
+    },
+    {
+      type: 'callout',
+      variant: 'info',
+      title: 'reading a spill in the wild',
+      md: `\`EXPLAIN ANALYZE\` confesses the whole lesson in one node. \`Sort Method: quicksort Memory: 24MB\` — pass 0 only, everything fit. \`Sort Method: external merge Disk: 2,600MB\` — your sort spilled, and the Disk figure is runs being written and re-read: you are paying 2N × passes against \`work_mem\` as your B. The fixes are this lesson's knobs: raise \`work_mem\` for the session (one big sort deserves it; raising it globally invites every connection to try), or hand the planner an index that already emits the needed order and watch the Sort node vanish into an Index Scan — sortedness as a reusable asset, which is exactly the "interesting order" idea T7.L3 formalizes.`,
+    },
+    {
+      type: 'statline',
+      stats: [
+        { value: '2N × passes', label: 'the bill', hint: 'Every pass reads and writes each page once. Pass count is the only lever that matters.' },
+        { value: 'B−1', label: 'merge fan-in', hint: 'One buffer reserved for output, all the rest for inputs. The fan-in sets the log base — and collapses the pass count.' },
+        { value: '~2B', label: 'replacement-sort run', hint: 'Emit-and-refill tournament: runs average twice memory on random input, vs exactly B for sort-then-write. Often deletes a whole pass.' },
+        { value: '2 passes', label: '1TB in 4GB', hint: '134M pages → 256 runs of 4GB → one 256-way merge. Sequential reads and writes throughout.' },
+      ],
+    },
+    {
+      type: 'quiz',
+      questions: [
+        {
+          q: 'Two-way external merge sort, N = 1000 pages, B = 5 buffers. How many page I/Os does the sort cost?',
+          options: [
+            '2,000 — one read and one write per page',
+            '18,000 — pass 0 makes 200 runs; ⌈log₂ 200⌉ = 8 merge passes; 9 passes × 2N = 9 × 2,000',
+            '9,000 — one I/O per page per pass',
+            '100,000 — runs must be compared pairwise',
+          ],
+          correct: [1],
+          explanation:
+            'passes = 1 + ⌈log₂(N/B)⌉ = 1 + ⌈log₂ 200⌉ = 1 + 8 = 9, and each pass reads and writes every page: 9 × 2 × 1000 = 18,000. The fan-in of 2 is what makes the textbook version expensive — which is why no real engine merges two ways.',
+        },
+        {
+          q: 'A real engine with B buffer pages merges B−1 runs per pass instead of two. What does that buy on a 1TB sort with 4GB of memory?',
+          options: [
+            'Nothing — the log grows with the fan-in',
+            'The fan-in sets the log base: 134M pages become 256 initial runs, and 256 ≤ B−1 ≈ 524,287, so a single merge pass finishes — two passes total instead of nine',
+            'It halves the memory the sort needs',
+            'It makes the I/O pattern random, which SSDs prefer',
+          ],
+          correct: [1],
+          explanation:
+            'passes = 1 + ⌈log_{B−1}(⌈N/B⌉)⌉. With B−1 in the hundreds of thousands, the log term is under 1 for any table you will actually sort — run generation plus one giant merge. The entire art of external sorting is keeping those two passes sequential and overlapped.',
+        },
+        {
+          q: 'Which operations are secretly a sort? (Select all that apply.)',
+          multi: true,
+          options: [
+            'CREATE INDEX via bottom-up bulk load — sort the keys, then write the tree level by level',
+            'DISTINCT without a usable index — dedup walks a sorted stream',
+            'Merge join — both inputs must arrive sorted on the join key',
+            'Hash join probe phase',
+          ],
+          correct: [0, 1, 2],
+          explanation:
+            'Bulk-loading a B+tree, set-based dedup, and the merge join\'s precondition are all sorting wearing another name — that is the "universal solvent" claim. The hash join is the duel\'s other corner: it exists precisely to answer equality questions *without* producing order.',
+        },
+      ],
+    },
+    {
+      type: 'deepdive',
+      title: 'going deeper: sorting as a research program',
+      md: `The lecture: **CMU 15-445 on sorting and aggregation** — runs, k-way merges, double buffering, live-coded. The survey: **Graefe, "Implementing Sorting in Database Systems" (ACM Computing Surveys, 2006)** — replacement selection, loser trees, run layout on disk, and four decades of tricks in one paper; this lesson is its first act. The production read: **Postgres's \`src/backend/utils/sort/tuplesort.c\`** — the real thing, including the bounded top-N heap that keeps \`ORDER BY ... LIMIT 10\` from sorting the table at all (a trick this lesson deliberately skipped). And the callback: the **"five-minute rule" (Gray & Putzolu, 1987)** priced when a page deserves to live in RAM — the same memory-vs-disk economics that sizes your B. The rule's breakeven has drifted with hardware ever since (Graefe re-ran the numbers for flash in 2008), and T0's cost model is why it will keep drifting.`,
+    },
+  ],
+}
+
+export default lesson
